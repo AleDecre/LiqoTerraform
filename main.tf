@@ -44,15 +44,6 @@ nodes:
 KIONF
 
   provisioner "local-exec" {
-    command = <<-EOT
-      liqoctl install kind --cluster-name milan --kubeconfig './milan-config'
-      liqoctl generate peer-command --kubeconfig "./milan-config" > newcommand
-      tail -n 1 newcommand > newcommand2
-      tr "\n" " " < newcommand2 > newcommand
-      echo "--kubeconfig \"./rome-config\"" > newcommand2
-      cat newcommand newcommand2 > cmd
-      bash cmd
-      rm newcommand newcommand2 cmd
-    EOT
+    command = "liqoctl install kind --cluster-name milan --kubeconfig './milan-config'"
   }
 }
