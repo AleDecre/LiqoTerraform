@@ -1,8 +1,8 @@
 terraform {
   required_providers {
     kind = {
-      source  = "unicell/kind"
-      version = "0.0.2-u2"
+      source  = "tehcyx/kind"
+      version = "0.0.14"
     }
   }
 }
@@ -11,39 +11,83 @@ provider "kind" {
 }
 
 resource "kind_cluster" "default" {
-  name        = "rome"
-  node_image  = "kindest/node:v1.23.6"
-  kind_config = <<KIONF
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-networking:
-  serviceSubnet: "10.90.0.0/12"
-  podSubnet: "10.200.0.0/16"
-nodes:
-  - role: control-plane
-  - role: worker
-KIONF
+  name           = "rome"
+  node_image     = var.kind_version
+  wait_for_ready = true
+
+  kind_config {
+    kind        = "Cluster"
+    api_version = "kind.x-k8s.io/v1alpha4"
+    networking {
+      service_subnet = var.networking_local.service_subnet
+      pod_subnet     = var.networking_local.pod_subnet
+    }
+    node {
+      role = "control-plane"
+    }
+    node {
+      role = "worker"
+    }
+  }
 
   provisioner "local-exec" {
-    command = " liqoctl install kind --cluster-name rome --kubeconfig './rome-config'"
+    command = " liqoctl install kind --cluster-name rome"
+
+    environment = {
+      KUBECONFIG = "${kind_cluster.default.kubeconfig_path}"
+    }
   }
+
 }
 
 resource "kind_cluster" "milan" {
-  name        = "milan"
-  node_image  = "kindest/node:v1.23.6"
-  kind_config = <<KIONF
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-networking:
-  serviceSubnet: "10.90.0.0/12"
-  podSubnet: "10.200.0.0/16"
-nodes:
-  - role: control-plane
-  - role: worker
-KIONF
+  name           = "milan"
+  node_image     = var.kind_version
+  wait_for_ready = true
+
+  kind_config {
+    kind        = "Cluster"
+    api_version = "kind.x-k8s.io/v1alpha4"
+    networking {
+      service_subnet = var.networking_remote.service_subnet
+      pod_subnet     = var.networking_remote.pod_subnet
+    }
+    node {
+      role = "control-plane"
+    }
+    node {
+      role = "worker"
+    }
+  }
 
   provisioner "local-exec" {
-    command = "liqoctl install kind --cluster-name milan --kubeconfig './milan-config'"
+    command = "liqoctl install kind --cluster-name milan --kubeconfig \"$KUBECONFIG_MILAN\""
+
+    environment = {
+      KUBECONFIG_MILAN = "${kind_cluster.milan.kubeconfig_path}"
+    }
   }
+
+}
+
+resource "null_resource" "cluster_peering" {
+
+  count = var.peering
+
+  depends_on = [
+    kind_cluster.default,
+    kind_cluster.milan
+  ]
+
+  provisioner "local-exec" {
+
+    command = "$(liqoctl generate peer-command --kubeconfig \"$KUBECONFIG_MILAN\" | tail -n 1)"
+
+    environment = {
+      KUBECONFIG       = "${kind_cluster.default.kubeconfig_path}"
+      KUBECONFIG_MILAN = "${kind_cluster.milan.kubeconfig_path}"
+    }
+
+  }
+
 }

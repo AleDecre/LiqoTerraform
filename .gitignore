@@ -1,0 +1,10 @@
+.terraform/providers/registry.terraform.io/tehcyx/kind/0.0.14/linux_amd64/LICENSE
+.terraform.lock.hcl
+.terraform/providers/registry.terraform.io/tehcyx/kind/0.0.14/linux_amd64/README.md
+.terraform/providers/registry.terraform.io/tehcyx/kind/0.0.14/linux_amd64/terraform-provider-kind
+.terraform.tfstate.lock.info
+milan-config
+rome-config
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/providers/registry.terraform.io/hashicorp/null/3.2.0/linux_amd64/terraform-provider-null_v3.2.0_x5
