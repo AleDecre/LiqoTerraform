@@ -2,7 +2,7 @@ kind_version = "v1.23.6"
 
 clusters = [
   {
-    location = "local"
+    remote = false
     name     = "rome"
     networking = {
       service_subnet = "10.90.0.0/12"
@@ -11,7 +11,7 @@ clusters = [
     peering = 0
   },
   {
-    location = "remote"
+    remote = true
     name     = "milan"
     networking = {
       service_subnet = "10.90.0.0/12"
