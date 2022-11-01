@@ -2,7 +2,7 @@ terraform {
   required_providers {
     kind = {
       source  = "tehcyx/kind"
-      version = "0.0.14"
+      version = "0.0.15"
     }
   }
 }
@@ -11,83 +11,69 @@ provider "kind" {
 }
 
 resource "kind_cluster" "default" {
-  name           = "rome"
-  node_image     = var.kind_version
-  wait_for_ready = true
+
+  for_each = {
+    for cluster in var.clusters :
+    cluster.name => cluster if cluster.location == "local"
+  }
+
+  name            = each.value.name
+  node_image      = "kindest/node:${var.kind_version}"
+  kubeconfig_path = "./config/liqo_kubeconf_${each.value.name}"
+  wait_for_ready  = true
 
   kind_config {
     kind        = "Cluster"
     api_version = "kind.x-k8s.io/v1alpha4"
     networking {
-      service_subnet = var.networking_local.service_subnet
-      pod_subnet     = var.networking_local.pod_subnet
+      service_subnet = each.value.networking.service_subnet
+      pod_subnet     = each.value.networking.pod_subnet
     }
     node {
       role = "control-plane"
     }
-    node {
-      role = "worker"
-    }
   }
 
   provisioner "local-exec" {
-    command = " liqoctl install kind --cluster-name rome"
+    command = "liqoctl install kind --cluster-name ${self.name}"
 
     environment = {
-      KUBECONFIG = "${kind_cluster.default.kubeconfig_path}"
+      KUBECONFIG = "${self.kubeconfig_path}"
     }
   }
 
 }
 
-resource "kind_cluster" "milan" {
-  name           = "milan"
-  node_image     = var.kind_version
-  wait_for_ready = true
+resource "kind_cluster" "remote" {
+
+  for_each = {
+    for cluster in var.clusters :
+    cluster.name => cluster if cluster.location == "remote"
+  }
+
+  name            = each.value.name
+  node_image      = "kindest/node:${var.kind_version}"
+  kubeconfig_path = "./config/liqo_kubeconf_${each.value.name}"
+  wait_for_ready  = true
 
   kind_config {
     kind        = "Cluster"
     api_version = "kind.x-k8s.io/v1alpha4"
     networking {
-      service_subnet = var.networking_remote.service_subnet
-      pod_subnet     = var.networking_remote.pod_subnet
+      service_subnet = each.value.networking.service_subnet
+      pod_subnet     = each.value.networking.pod_subnet
     }
     node {
       role = "control-plane"
     }
-    node {
-      role = "worker"
-    }
   }
 
   provisioner "local-exec" {
-    command = "liqoctl install kind --cluster-name milan --kubeconfig \"$KUBECONFIG_MILAN\""
+    command = "liqoctl install kind --cluster-name ${self.name}"
 
     environment = {
-      KUBECONFIG_MILAN = "${kind_cluster.milan.kubeconfig_path}"
+      KUBECONFIG = "${self.kubeconfig_path}"
     }
-  }
-
-}
-
-resource "null_resource" "cluster_peering" {
-
-  count = var.peering
-
-  depends_on = [
-    kind_cluster.default,
-    kind_cluster.milan
-  ]
-
-  provisioner "local-exec" {
-
-    command = "$(liqoctl generate peer-command --kubeconfig \"$KUBECONFIG_MILAN\" | tail -n 1)"
-
-    environment = {
-      KUBECONFIG       = "${kind_cluster.default.kubeconfig_path}"
-      KUBECONFIG_MILAN = "${kind_cluster.milan.kubeconfig_path}"
-    }
-
   }
 
 }
