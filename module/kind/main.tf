@@ -9,22 +9,17 @@ terraform {
 
 resource "kind_cluster" "default" {
 
-  for_each = {
-    for cluster in var.clusters :
-    cluster.name => cluster
-  }
-
-  name            = each.value.name
+  name            = var.cluster.name
   node_image      = "kindest/node:${var.kind_version}"
-  kubeconfig_path = "./config/liqo_kubeconf_${each.value.name}"
+  kubeconfig_path = "./config/liqo_kubeconf_${var.cluster.name}"
   wait_for_ready  = true
 
   kind_config {
     kind        = "Cluster"
     api_version = "kind.x-k8s.io/v1alpha4"
     networking {
-      service_subnet = each.value.networking.service_subnet
-      pod_subnet     = each.value.networking.pod_subnet
+      service_subnet = var.cluster.networking.service_subnet
+      pod_subnet     = var.cluster.networking.pod_subnet
     }
     node {
       role = "control-plane"
@@ -44,22 +39,3 @@ resource "kind_cluster" "default" {
 
 }
 
-resource "null_resource" "cluster_peering" {
-
-  for_each = {
-    for cluster in var.clusters :
-    cluster.name => cluster if cluster.remote
-  }
-
-  provisioner "local-exec" {
-
-    command = "$(liqoctl generate peer-command --kubeconfig \"$KUBECONFIG_REMOTE\" | tail -n 1)"
-
-    environment = {
-      KUBECONFIG       = "${kind_cluster.default["rome"].kubeconfig_path}"
-      KUBECONFIG_REMOTE = "${kind_cluster.default[each.value.name].kubeconfig_path}"
-    }
-
-  }
-
-}

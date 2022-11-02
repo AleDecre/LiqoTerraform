@@ -8,9 +8,9 @@ variable "kind_version" {
 
 }
 
-variable "clusters" {
+variable "cluster" {
 
-  type = list(object({
+  type = object({
 
     remote = bool
     name     = string
@@ -20,6 +20,6 @@ variable "clusters" {
     })
     peering = number
 
-  }))
+  })
 
 }
