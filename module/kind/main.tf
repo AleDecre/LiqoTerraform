@@ -30,7 +30,8 @@ resource "kind_cluster" "default" {
   }
 
   provisioner "local-exec" {
-    command = "liqoctl install kind --cluster-name ${self.name}"
+    on_failure = continue
+    command = "kind load docker-image liqo/liqo-webhook:latest liqo/auth-service:v0.6.0 liqo/liqo-controller-manager:v0.6.0 liqo/crd-replicator:v0.6.0 liqo/liqonet:v0.6.0 liqo/metric-agent:v0.6.0 liqo/uninstaller:v0.6.0 envoyproxy/envoy:v1.21.0 --name ${self.name}"
 
     environment = {
       KUBECONFIG = "${self.kubeconfig_path}"
@@ -39,3 +40,13 @@ resource "kind_cluster" "default" {
 
 }
 
+resource "null_resource" "install_liqo" {
+
+  provisioner "local-exec" {
+    command = "liqoctl install kind --cluster-name ${var.cluster.name} --set telemetry.enable=false"
+    environment = {
+      KUBECONFIG = "${kind_cluster.default.kubeconfig_path}"
+    }
+  }
+
+}
