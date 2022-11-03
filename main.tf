@@ -25,7 +25,7 @@ module "kind" {
 }
 
 
-resource "null_resource" "cluster_peering" {
+resource "null_resource" "cluster_peering1" {
 
   for_each = {
     for index, cluster in var.clusters.clusters_list :
@@ -41,18 +41,6 @@ resource "null_resource" "cluster_peering" {
       KUBECONFIG_REMOTE = "${module.kind[each.value.name].kubeconfig_path}"
     }
 
-  }
-  /*
-  provisioner "local-exec" {
-
-    command = "$(liqoctl generate peer-command --only-command --kubeconfig \"$KUBECONFIG_REMOTE\")"
-
-    environment = {
-      KUBECONFIG        = "${module.kind["rome"] kubeconfig_path}"
-      KUBECONFIG_REMOTE = "${module.kind[each.value.name].kubeconfig_path}"
-    }
-
-  }
-*/
+  } 
 }
 
