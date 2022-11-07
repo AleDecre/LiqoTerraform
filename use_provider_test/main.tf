@@ -8,9 +8,6 @@ terraform {
 }
 
 provider "liqo" {
-  username = "education"
-  password = "test123"
-  host     = "http://localhost:19090"
 }
 
 resource "liqo_peering" "edu" {
