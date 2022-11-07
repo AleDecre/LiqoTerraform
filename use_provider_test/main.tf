@@ -1,11 +1,22 @@
 terraform {
   required_providers {
-    hashicups = {
+    liqo = {
       source = "liqo-provider/liqo/test"
     }
   }
+  required_version = ">= 1.1.0"
 }
 
-provider "hashicups" {}
+provider "liqo" {
+  username = "education"
+  password = "test123"
+  host     = "http://localhost:19090"
+}
 
-data "hashicups_coffees" "example" {}
+resource "liqo_peering" "edu" {
+  id = 10
+}
+
+output "edu_order" {
+  value = liqo_peering.edu
+}
