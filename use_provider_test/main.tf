@@ -4,14 +4,13 @@ terraform {
       source = "liqo-provider/liqo/test"
     }
   }
-  required_version = ">= 1.1.0"
 }
 
 provider "liqo" {
 }
 
 resource "liqo_peering" "edu" {
-  id = 10
+  id = "./config/liqo_kubeconf_rome"
 }
 
 output "edu_order" {

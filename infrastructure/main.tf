@@ -34,7 +34,7 @@ resource "null_resource" "cluster_peering1" {
 
   provisioner "local-exec" {
 
-    command = "$(liqoctl generate peer-command --only-command --kubeconfig \"$KUBECONFIG_REMOTE\")"
+    command = "liqoctl generate peer-command --only-command --kubeconfig \"$KUBECONFIG_REMOTE\""
 
     environment = {
       KUBECONFIG        = "${module.kind[var.clusters.clusters_list[0].name].kubeconfig_path}"
