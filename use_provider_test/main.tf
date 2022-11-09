@@ -10,9 +10,14 @@ provider "liqo" {
 }
 
 resource "liqo_peering" "edu" {
-  id = "../infrastructure/config/liqo_kubeconf_rome"
+  kubeconfig_path = "../infrastructure/config/liqo_kubeconf_rome"
+  cluster_id      = "<ClusterID>"
+  cluster_authurl = "<ClusterAuthURL>"
+  cluster_token   = "<ClusterToken>"
 }
 
-output "edu_order" {
-  value = liqo_peering.edu
-}
+/*
+  output "edu_order" {
+    value = liqo_peering.edu
+  }
+*/
