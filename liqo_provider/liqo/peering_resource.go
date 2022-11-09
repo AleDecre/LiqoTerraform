@@ -1,23 +1,25 @@
 package liqo
 
 import (
-	"bytes"
 	"context"
+	"io/ioutil"
 	"time"
-
-	"html/template"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/liqotech/liqo/pkg/liqoctl/completion"
-	"github.com/liqotech/liqo/pkg/liqoctl/factory"
-	"github.com/liqotech/liqo/pkg/liqoctl/output"
-	"github.com/liqotech/liqo/pkg/liqoctl/peer"
-	"github.com/liqotech/liqo/pkg/liqoctl/peeroob"
-	"github.com/spf13/cobra"
-	"k8s.io/kubectl/pkg/cmd/util"
+	discoveryv1alpha1 "github.com/liqotech/liqo/apis/discovery/v1alpha1"
+	"github.com/liqotech/liqo/pkg/discovery"
+	"github.com/liqotech/liqo/pkg/utils"
+	authenticationtokenutils "github.com/liqotech/liqo/pkg/utils/authenticationtoken"
+	foreigncluster "github.com/liqotech/liqo/pkg/utils/foreignCluster"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -59,134 +61,6 @@ func (r *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 	}, nil
 }
 
-var liqoctl string
-
-const liqoctlLongHelp = `{{ .Executable}} is a CLI tool to install and manage Liqo.
-Liqo is a platform to enable dynamic and decentralized resource sharing across
-Kubernetes clusters, either on-prem or managed. Liqo allows to run pods on a
-remote cluster seamlessly and without any modification of Kubernetes and the
-applications. With Liqo it is possible to extend the control and data plane of a
-Kubernetes cluster across the cluster's boundaries, making multi-cluster native
-and transparent: collapse an entire remote cluster to a local virtual node,
-enabling workloads offloading, resource management and cross-cluster communication
-compliant with the standard Kubernetes approach.
-`
-
-const liqoctlPeerLongHelp = `Enable a peering towards a remote cluster.
-In Liqo, a *peering* is a unidirectional resource and service consumption
-relationship between two Kubernetes clusters, with one cluster (i.e., the
-consumer) granted the capability to offload tasks in a remote cluster (i.e., the
-provider), but not vice versa. Bidirectional peerings can be achieved through
-their combination. The same cluster can play the role of provider and consumer
-in multiple peerings.
-Liqo supports two peering approaches, respectively referred to as out-of-band
-control-plane and in-band control-plane. In the *out-of-band* control plane
-peering, the Liqo control plane traffic flows outside the VPN tunnel used for
-cross-cluster pod-to-pod communication. With the *in-band* approach, on the other
-hand, all control plane traffic flows inside the VPN tunnel. The latter approach
-relaxes the connectivity requirements, although it requires access to both
-clusters (i.e., kubeconfigs) to start the peering process and setup the VPN tunnel.
-This command enables a peering towards an already known remote cluster, without the
-need of specifying all authentication parameters. It adopts the same approach already
-used while peering for the first time with the given remote cluster.
-Warning: the establishment of a peering with a remote cluster leveraging a different
-version of Liqo, net of patch releases, is currently *not supported*, and could
-lead to unexpected results.
-Examples:
-  $ {{ .Executable }} peer eternal-donkey
-or
-  $ {{ .Executable }} peer nearby-malamute --namespace liqo-system
-`
-
-const liqoctlPeerOOBLongHelp = `Enable an out-of-band peering towards a remote cluster.
-The out-of-band control plane peering is the standard peering approach, with the
-Liqo control-plane traffic flowing outside the VPN tunnel interconnecting the
-two clusters. The VPN tunnel is dynamically started in a later stage of the
-peering process, and it is leveraged only for cross-cluster pods traffic.
-This approach supports clusters under the control of different administrative
-domains (i.e., only local cluster access is required), and it is characterized
-by higher dynamism and resilience in case of reconfigurations. Yet, it requires
-three different endpoints to be reachable from the pods running in the remote
-cluster (i.e., the Liqo authentication service, the Liqo VPN endpoint and the
-Kubernetes API server).
-Examples:
-  $ {{ .Executable }} peer out-of-band eternal-donkey --auth-url <auth-url> \
-      --cluster-id <cluster-id> --auth-token <auth-token>
-or
-  $ {{ .Executable }} peer out-of-band nearby-malamute --auth-url <auth-url> \
-      --cluster-id <cluster-id> --auth-token <auth-token> --namespace liqo-system
-The command above can be generated executing the following from the target cluster:
-  $ {{ .Executable }} generate peer-command
-`
-
-func WithTemplate(str string) string {
-	tmpl := template.Must(template.New("liqoctl").Parse(str))
-	var buf bytes.Buffer
-	util.CheckErr(tmpl.Execute(&buf, struct{ Executable string }{liqoctl}))
-	return buf.String()
-}
-
-// singleClusterPersistentPreRun initializes the local factory.
-func singleClusterPersistentPreRun(_ *cobra.Command, f *factory.Factory, opts ...factory.Options) {
-	// Populate the factory fields based on the configured parameters.
-	f.Printer.CheckErr(f.Initialize(opts...))
-}
-
-func newPeerOutOfBandCommand(ctx context.Context, peerOptions *peer.Options) *cobra.Command {
-	options := &peeroob.Options{Options: peerOptions}
-	cmd := &cobra.Command{
-		Use:     "out-of-band cluster-name",
-		Aliases: []string{"oob"},
-		Short:   "Enable an out-of-band peering towards a remote cluster",
-		Long:    WithTemplate(liqoctlPeerOOBLongHelp),
-		Args:    cobra.ExactArgs(1),
-
-		Run: func(cmd *cobra.Command, args []string) {
-			options.ClusterName = "milan"
-			output.ExitOnErr(options.Run(ctx))
-		},
-	}
-
-	cmd.Flags().StringVar(&options.ClusterAuthURL, peeroob.AuthURLFlagName, "https://172.19.0.3:30615",
-		"The authentication URL of the target remote cluster")
-	cmd.Flags().StringVar(&options.ClusterToken, peeroob.ClusterTokenFlagName, "a0a86c0a104ed9cb7e707a06062ee4881f9fcba4522724cfd6029340e4f62abc3b66806fcc9dc45eb90b6d58f43ea9323b6786d198f07239482c293ff6bd2ee7",
-		"The authentication token of the target remote cluster")
-	cmd.Flags().StringVar(&options.ClusterID, peeroob.ClusterIDFlagName, "cc389391-70e7-4043-9b8f-ffa3d8c1e954",
-		"The Cluster ID identifying the target remote cluster")
-
-	f := peerOptions.Factory
-	f.AddLiqoNamespaceFlag(cmd.Flags())
-	f.Printer.CheckErr(cmd.RegisterFlagCompletionFunc(factory.FlagNamespace, completion.Namespaces(ctx, f, completion.NoLimit)))
-
-	f.Printer.CheckErr(cmd.MarkFlagRequired(peeroob.ClusterIDFlagName))
-	f.Printer.CheckErr(cmd.MarkFlagRequired(peeroob.ClusterTokenFlagName))
-	f.Printer.CheckErr(cmd.MarkFlagRequired(peeroob.AuthURLFlagName))
-
-	return cmd
-}
-
-func newPeerCommand(ctx context.Context, f *factory.Factory) *cobra.Command {
-	options := &peer.Options{Factory: f}
-	cmd := &cobra.Command{
-		Use:               "peer",
-		Short:             "Enable a peering towards a remote cluster",
-		Long:              WithTemplate(liqoctlPeerLongHelp),
-		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: completion.ForeignClusters(ctx, f, 1),
-
-		Run: func(cmd *cobra.Command, args []string) {
-			options.ClusterName = "milan"
-			output.ExitOnErr(options.Run(ctx))
-		},
-	}
-
-	cmd.PersistentFlags().DurationVar(&options.Timeout, "timeout", 120*time.Second, "Timeout for peering completion")
-
-	cmd.AddCommand(newPeerOutOfBandCommand(ctx, options))
-
-	return cmd
-}
-
 // Create a new resource
 func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	// Retrieve values from plan
@@ -197,39 +71,66 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	f := factory.NewForLocal()
-
-	cmd := &cobra.Command{
-		Use:          liqoctl,
-		Short:        "A CLI tool to install and manage Liqo",
-		Long:         WithTemplate(liqoctlLongHelp),
-		Args:         cobra.NoArgs,
-		SilenceUsage: true,
-
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if cmd != nil && cmd.Name() != cobra.ShellCompRequestCmd {
-				singleClusterPersistentPreRun(cmd, f)
-			}
-		},
-	}
-
-	cmd.PersistentFlags().String("kubeconfig", plan.ID.Value, "kubeconfig-path")
-
-	cmd.AddCommand(newPeerCommand(ctx, f))
-
-	str, err := cmd.PersistentFlags().GetString("kubeconfig")
-
+	byte, err := ioutil.ReadFile(plan.ID.Value)
 	if err != nil {
-		plan.LastUpdated = types.StringValue("Error")
-		return
+		plan.LastUpdated = types.StringValue(err.Error())
 	}
 
-	plan.LastUpdated = types.StringValue(str)
+	plan.LastUpdated = types.StringValue(string(byte))
 
-	if err := cmd.ExecuteContext(ctx); err != nil {
-		plan.LastUpdated = types.StringValue("Error")
-		return
+	var clientCfg clientcmd.ClientConfig
+
+	clientCfg, err = clientcmd.NewClientConfigFromBytes(byte)
+	if err != nil {
+		plan.LastUpdated = types.StringValue(err.Error())
 	}
+
+	var restCfg *rest.Config
+
+	restCfg, err = clientCfg.ClientConfig()
+	if err != nil {
+		plan.LastUpdated = types.StringValue(err.Error())
+	}
+
+	var CRClient client.Client
+
+	CRClient, err = client.New(restCfg, client.Options{})
+	if err != nil {
+		plan.LastUpdated = types.StringValue(err.Error())
+	}
+	_ = CRClient
+
+	KubeClient, err := kubernetes.NewForConfig(restCfg)
+	if err != nil {
+		plan.LastUpdated = types.StringValue(err.Error())
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+
+	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, CRClient, "liqo")
+	if err != nil {
+		plan.LastUpdated = types.StringValue(err.Error())
+	}
+	_ = clusterIdentity
+
+	if clusterIdentity.ClusterID == "<ClusterID>" {
+		plan.LastUpdated = types.StringValue("Same ClusterID")
+	}
+
+	err = authenticationtokenutils.StoreInSecret(ctx, KubeClient, "<ClusterID>", "<ClusterToken>", "liqo")
+	if err != nil {
+		plan.LastUpdated = types.StringValue(err.Error())
+	}
+
+	fc, err := foreigncluster.GetForeignClusterByID(ctx, CRClient, "<ClusterID>")
+	if kerrors.IsNotFound(err) {
+		fc = &discoveryv1alpha1.ForeignCluster{ObjectMeta: metav1.ObjectMeta{Name: "<ClusterName>",
+			Labels: map[string]string{discovery.ClusterIDLabel: "<ClusterID>"}}}
+	} else if err != nil {
+		plan.LastUpdated = types.StringValue(err.Error())
+	}
+	_ = fc
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)

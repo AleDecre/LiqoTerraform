@@ -10,7 +10,7 @@ provider "liqo" {
 }
 
 resource "liqo_peering" "edu" {
-  id = "./config/liqo_kubeconf_rome"
+  id = "../infrastructure/config/liqo_kubeconf_rome"
 }
 
 output "edu_order" {
