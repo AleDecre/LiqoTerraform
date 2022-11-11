@@ -2,7 +2,6 @@ package liqo
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"time"
 
@@ -14,44 +13,39 @@ import (
 	netv1alpha1 "github.com/liqotech/liqo/apis/net/v1alpha1"
 	offloadingv1alpha1 "github.com/liqotech/liqo/apis/offloading/v1alpha1"
 	sharingv1alpha1 "github.com/liqotech/liqo/apis/sharing/v1alpha1"
-	"github.com/liqotech/liqo/pkg/discovery"
+	"github.com/liqotech/liqo/pkg/auth"
 	"github.com/liqotech/liqo/pkg/utils"
-	authenticationtokenutils "github.com/liqotech/liqo/pkg/utils/authenticationtoken"
 	foreigncluster "github.com/liqotech/liqo/pkg/utils/foreignCluster"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubectl/pkg/scheme"
-	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ resource.Resource              = &peeringResource{}
-	_ resource.ResourceWithConfigure = &peeringResource{}
+	_ resource.Resource              = &generateResource{}
+	_ resource.ResourceWithConfigure = &generateResource{}
 )
 
-// NewPeeringResource is a helper function to simplify the provider implementation.
-func NewPeeringResource() resource.Resource {
-	return &peeringResource{}
+// NewGenerateResource is a helper function to simplify the provider implementation.
+func NewGenerateResource() resource.Resource {
+	return &generateResource{}
 }
 
-// peeringResource is the resource implementation.
-type peeringResource struct {
+// generateResource is the resource implementation.
+type generateResource struct {
 }
 
 // Metadata returns the resource type name.
-func (r *peeringResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_peering"
+func (r *generateResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_generate"
 }
 
 // GetSchema defines the schema for the resource.
-func (r *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
+func (r *generateResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		Attributes: map[string]tfsdk.Attribute{
 			"kubeconfig_path": {
@@ -60,23 +54,18 @@ func (r *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 			},
 			"cluster_id": {
 				Type:     types.StringType,
-				Required: true,
+				Computed: true,
 			},
 			"cluster_name": {
 				Type:     types.StringType,
-				Required: true,
+				Computed: true,
 			},
-			"cluster_authurl": {
+			"auth_ep": {
 				Type:     types.StringType,
-				Required: true,
+				Computed: true,
 			},
-			"cluster_token": {
+			"local_token": {
 				Type:     types.StringType,
-				Required: true,
-			},
-			"liqo_namespace": {
-				Type:     types.StringType,
-				Optional: true,
 				Computed: true,
 			},
 			"error_msg": {
@@ -88,9 +77,9 @@ func (r *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 }
 
 // Create a new resource
-func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *generateResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	// Retrieve values from plan
-	var plan peeringResourceModel
+	var plan generateResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -98,13 +87,6 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	plan.ErrorMsg = types.StringValue("Success")
-
-	LiqoNamespace := plan.LiqoNamespace.Value
-
-	if plan.LiqoNamespace.Value == "" {
-		plan.LiqoNamespace = types.StringValue("liqo")
-		LiqoNamespace = "liqo"
-	}
 
 	utilruntime.Must(discoveryv1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(netv1alpha1.AddToScheme(scheme.Scheme))
@@ -142,60 +124,35 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
+	_ = KubeClient
 
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
-	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, CRClient, LiqoNamespace)
+	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, CRClient, "liqo")
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
 	_ = clusterIdentity
 
-	if clusterIdentity.ClusterID == plan.ClusterID.Value {
-		plan.ErrorMsg = types.StringValue("Same ClusterID")
-	}
-
-	err = authenticationtokenutils.StoreInSecret(ctx, KubeClient, plan.ClusterID.Value, plan.ClusterToken.Value, LiqoNamespace)
+	localToken, err := auth.GetToken(ctx, CRClient, "liqo")
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
 
-	fc, err := foreigncluster.GetForeignClusterByID(ctx, CRClient, plan.ClusterID.Value)
-	if kerrors.IsNotFound(err) {
-		fc = &discoveryv1alpha1.ForeignCluster{ObjectMeta: metav1.ObjectMeta{Name: plan.ClusterName.Value,
-			Labels: map[string]string{discovery.ClusterIDLabel: plan.ClusterID.Value}}}
-	} else if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
-	}
-
-	_, err = controllerutil.CreateOrUpdate(ctx, CRClient, fc, func() error {
-		if fc.Spec.PeeringType != discoveryv1alpha1.PeeringTypeUnknown && fc.Spec.PeeringType != discoveryv1alpha1.PeeringTypeOutOfBand {
-			return fmt.Errorf("a peering of type %s already exists towards remote cluster %q, cannot be changed to %s",
-				fc.Spec.PeeringType, plan.ClusterName.Value, discoveryv1alpha1.PeeringTypeOutOfBand)
-		}
-
-		fc.Spec.PeeringType = discoveryv1alpha1.PeeringTypeOutOfBand
-		fc.Spec.ClusterIdentity.ClusterID = plan.ClusterID.Value
-		if fc.Spec.ClusterIdentity.ClusterName == "" {
-			fc.Spec.ClusterIdentity.ClusterName = plan.ClusterName.Value
-		}
-
-		fc.Spec.ForeignAuthURL = plan.ClusterAuthURL.Value
-		fc.Spec.ForeignProxyURL = ""
-		fc.Spec.OutgoingPeeringEnabled = discoveryv1alpha1.PeeringEnabledYes
-		if fc.Spec.IncomingPeeringEnabled == "" {
-			fc.Spec.IncomingPeeringEnabled = discoveryv1alpha1.PeeringEnabledAuto
-		}
-		if fc.Spec.InsecureSkipTLSVerify == nil {
-			fc.Spec.InsecureSkipTLSVerify = pointer.BoolPtr(true)
-		}
-		return nil
-	})
-
+	authEP, err := foreigncluster.GetHomeAuthURL(ctx, CRClient, "liqo")
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
+
+	if clusterIdentity.ClusterName == "" {
+		clusterIdentity.ClusterName = clusterIdentity.ClusterID
+	}
+
+	plan.ClusterID = types.StringValue(clusterIdentity.ClusterID)
+	plan.ClusterName = types.StringValue(clusterIdentity.ClusterName)
+	plan.LocalToken = types.StringValue(localToken)
+	plan.AuthEP = types.StringValue(authEP)
 
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
@@ -206,9 +163,9 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 }
 
 // Read resource information
-func (r *peeringResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *generateResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	// Get current state
-	var state peeringResourceModel
+	var state generateResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -224,9 +181,9 @@ func (r *peeringResource) Read(ctx context.Context, req resource.ReadRequest, re
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
-func (r *peeringResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *generateResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	// Retrieve values from plan
-	var plan peeringResourceModel
+	var plan generateResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -243,23 +200,22 @@ func (r *peeringResource) Update(ctx context.Context, req resource.UpdateRequest
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
-func (r *peeringResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *generateResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
 // Configure adds the provider configured client to the resource.
-func (r *peeringResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
+func (r *generateResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
 }
 
-// peeringResourceModel maps the resource schema data.
-type peeringResourceModel struct {
+// generateResourceModel maps the resource schema data.
+type generateResourceModel struct {
 	KubeconfigPath types.String `tfsdk:"kubeconfig_path"`
 	ClusterID      types.String `tfsdk:"cluster_id"`
 	ClusterName    types.String `tfsdk:"cluster_name"`
-	ClusterAuthURL types.String `tfsdk:"cluster_authurl"`
-	ClusterToken   types.String `tfsdk:"cluster_token"`
-	LiqoNamespace  types.String `tfsdk:"liqo_namespace"`
+	AuthEP         types.String `tfsdk:"auth_ep"`
+	LocalToken     types.String `tfsdk:"local_token"`
 	ErrorMsg       types.String `tfsdk:"error_msg"`
 }
