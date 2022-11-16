@@ -3,30 +3,19 @@ package liqo
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	discoveryv1alpha1 "github.com/liqotech/liqo/apis/discovery/v1alpha1"
-	netv1alpha1 "github.com/liqotech/liqo/apis/net/v1alpha1"
-	offloadingv1alpha1 "github.com/liqotech/liqo/apis/offloading/v1alpha1"
-	sharingv1alpha1 "github.com/liqotech/liqo/apis/sharing/v1alpha1"
 	"github.com/liqotech/liqo/pkg/discovery"
 	"github.com/liqotech/liqo/pkg/utils"
 	authenticationtokenutils "github.com/liqotech/liqo/pkg/utils/authenticationtoken"
 	foreigncluster "github.com/liqotech/liqo/pkg/utils/foreignCluster"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubectl/pkg/scheme"
 	"k8s.io/utils/pointer"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -43,6 +32,7 @@ func NewPeeringResource() resource.Resource {
 
 // peeringResource is the resource implementation.
 type peeringResource struct {
+	kubeconfig kubeconfig
 }
 
 // Metadata returns the resource type name.
@@ -106,47 +96,7 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		LiqoNamespace = "liqo"
 	}
 
-	utilruntime.Must(discoveryv1alpha1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(netv1alpha1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(offloadingv1alpha1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(sharingv1alpha1.AddToScheme(scheme.Scheme))
-
-	byte, err := ioutil.ReadFile(plan.KubeconfigPath.Value)
-	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
-	}
-
-	var clientCfg clientcmd.ClientConfig
-
-	clientCfg, err = clientcmd.NewClientConfigFromBytes(byte)
-	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
-	}
-
-	var restCfg *rest.Config
-
-	restCfg, err = clientCfg.ClientConfig()
-	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
-	}
-
-	var CRClient client.Client
-
-	CRClient, err = client.New(restCfg, client.Options{Scheme: scheme.Scheme})
-	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
-	}
-	_ = CRClient
-
-	KubeClient, err := kubernetes.NewForConfig(restCfg)
-	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
-	defer cancel()
-
-	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, CRClient, LiqoNamespace)
+	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, LiqoNamespace)
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
@@ -156,12 +106,12 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		plan.ErrorMsg = types.StringValue("Same ClusterID")
 	}
 
-	err = authenticationtokenutils.StoreInSecret(ctx, KubeClient, plan.ClusterID.Value, plan.ClusterToken.Value, LiqoNamespace)
+	err = authenticationtokenutils.StoreInSecret(ctx, r.kubeconfig.KubeClient, plan.ClusterID.Value, plan.ClusterToken.Value, LiqoNamespace)
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
 
-	fc, err := foreigncluster.GetForeignClusterByID(ctx, CRClient, plan.ClusterID.Value)
+	fc, err := foreigncluster.GetForeignClusterByID(ctx, r.kubeconfig.CRClient, plan.ClusterID.Value)
 	if kerrors.IsNotFound(err) {
 		fc = &discoveryv1alpha1.ForeignCluster{ObjectMeta: metav1.ObjectMeta{Name: plan.ClusterName.Value,
 			Labels: map[string]string{discovery.ClusterIDLabel: plan.ClusterID.Value}}}
@@ -169,7 +119,7 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
 
-	_, err = controllerutil.CreateOrUpdate(ctx, CRClient, fc, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.kubeconfig.CRClient, fc, func() error {
 		if fc.Spec.PeeringType != discoveryv1alpha1.PeeringTypeUnknown && fc.Spec.PeeringType != discoveryv1alpha1.PeeringTypeOutOfBand {
 			return fmt.Errorf("a peering of type %s already exists towards remote cluster %q, cannot be changed to %s",
 				fc.Spec.PeeringType, plan.ClusterName.Value, discoveryv1alpha1.PeeringTypeOutOfBand)
@@ -225,21 +175,6 @@ func (r *peeringResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *peeringResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// Retrieve values from plan
-	var plan peeringResourceModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	plan.ErrorMsg = types.StringValue(time.Now().Format(time.RFC850))
-
-	diags = resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
@@ -251,6 +186,8 @@ func (r *peeringResource) Configure(_ context.Context, req resource.ConfigureReq
 	if req.ProviderData == nil {
 		return
 	}
+
+	r.kubeconfig = req.ProviderData.(kubeconfig)
 }
 
 // peeringResourceModel maps the resource schema data.

@@ -14,7 +14,21 @@ provider "kind" {
 }
 
 provider "liqo" {
+  host                     = ""
+  username                 = ""
+  password                 = ""
+  insecure                 = ""
+  client_certificate       = ""
+  client_key               = ""
+  cluster_ca_certificate   = ""
+  config_path              = ""
+  config_context           = ""
+  config_context_cluster   = ""
+  token                    = ""
+  proxy_url                = ""
+  config_context_auth_info = ""
 }
+
 
 module "kind" {
 
@@ -41,7 +55,7 @@ resource "liqo_generate" "gen" {
 
 }
 
-resource "liqo_peering" "peer1" {
+resource "liqo_peering" "peer" {
 
   for_each = {
     for index, cluster in var.clusters.clusters_list :
@@ -50,7 +64,7 @@ resource "liqo_peering" "peer1" {
 
   kubeconfig_path = module.kind[var.clusters.clusters_list[0].name].kubeconfig_path
   cluster_id      = liqo_generate.gen[each.value.name].cluster_id
-  cluster_name      = liqo_generate.gen[each.value.name].cluster_name
+  cluster_name    = liqo_generate.gen[each.value.name].cluster_name
   cluster_authurl = liqo_generate.gen[each.value.name].auth_ep
   cluster_token   = liqo_generate.gen[each.value.name].local_token
 

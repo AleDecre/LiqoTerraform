@@ -2,26 +2,15 @@ package liqo
 
 import (
 	"context"
-	"io/ioutil"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	discoveryv1alpha1 "github.com/liqotech/liqo/apis/discovery/v1alpha1"
-	netv1alpha1 "github.com/liqotech/liqo/apis/net/v1alpha1"
-	offloadingv1alpha1 "github.com/liqotech/liqo/apis/offloading/v1alpha1"
-	sharingv1alpha1 "github.com/liqotech/liqo/apis/sharing/v1alpha1"
 	"github.com/liqotech/liqo/pkg/auth"
 	"github.com/liqotech/liqo/pkg/utils"
 	foreigncluster "github.com/liqotech/liqo/pkg/utils/foreignCluster"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubectl/pkg/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -37,6 +26,7 @@ func NewGenerateResource() resource.Resource {
 
 // generateResource is the resource implementation.
 type generateResource struct {
+	kubeconfig kubeconfig
 }
 
 // Metadata returns the resource type name.
@@ -68,6 +58,11 @@ func (r *generateResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diag
 				Type:     types.StringType,
 				Computed: true,
 			},
+			"liqo_namespace": {
+				Type:     types.StringType,
+				Optional: true,
+				Computed: true,
+			},
 			"error_msg": {
 				Type:     types.StringType,
 				Computed: true,
@@ -88,59 +83,25 @@ func (r *generateResource) Create(ctx context.Context, req resource.CreateReques
 
 	plan.ErrorMsg = types.StringValue("Success")
 
-	utilruntime.Must(discoveryv1alpha1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(netv1alpha1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(offloadingv1alpha1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(sharingv1alpha1.AddToScheme(scheme.Scheme))
+	LiqoNamespace := plan.LiqoNamespace.Value
 
-	byte, err := ioutil.ReadFile(plan.KubeconfigPath.Value)
-	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
+	if plan.LiqoNamespace.Value == "" {
+		plan.LiqoNamespace = types.StringValue("liqo")
+		LiqoNamespace = "liqo"
 	}
 
-	var clientCfg clientcmd.ClientConfig
-
-	clientCfg, err = clientcmd.NewClientConfigFromBytes(byte)
-	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
-	}
-
-	var restCfg *rest.Config
-
-	restCfg, err = clientCfg.ClientConfig()
-	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
-	}
-
-	var CRClient client.Client
-
-	CRClient, err = client.New(restCfg, client.Options{Scheme: scheme.Scheme})
-	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
-	}
-	_ = CRClient
-
-	KubeClient, err := kubernetes.NewForConfig(restCfg)
-	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
-	}
-	_ = KubeClient
-
-	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
-	defer cancel()
-
-	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, CRClient, "liqo")
+	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, LiqoNamespace)
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
 	_ = clusterIdentity
 
-	localToken, err := auth.GetToken(ctx, CRClient, "liqo")
+	localToken, err := auth.GetToken(ctx, r.kubeconfig.CRClient, LiqoNamespace)
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
 
-	authEP, err := foreigncluster.GetHomeAuthURL(ctx, CRClient, "liqo")
+	authEP, err := foreigncluster.GetHomeAuthURL(ctx, r.kubeconfig.CRClient, LiqoNamespace)
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
@@ -208,6 +169,8 @@ func (r *generateResource) Configure(_ context.Context, req resource.ConfigureRe
 	if req.ProviderData == nil {
 		return
 	}
+
+	r.kubeconfig = req.ProviderData.(kubeconfig)
 }
 
 // generateResourceModel maps the resource schema data.
@@ -217,5 +180,6 @@ type generateResourceModel struct {
 	ClusterName    types.String `tfsdk:"cluster_name"`
 	AuthEP         types.String `tfsdk:"auth_ep"`
 	LocalToken     types.String `tfsdk:"local_token"`
+	LiqoNamespace  types.String `tfsdk:"liqo_namespace"`
 	ErrorMsg       types.String `tfsdk:"error_msg"`
 }
