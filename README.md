@@ -13,10 +13,10 @@ Follow this example steps to test locally the implemented provider.
 ### Installation
 1. in ***.terraform.d*** folder (you should have it in home/\<usr\>/) make directory with this command replacing _architecture_ with your architecture (example: linux_arm64 or linux_amd64):
 
-    ``` mkdir -p /plugins/liqo-provider/liqo/test/0.0.1/\<architecture\>/ ```
+    ``` mkdir -p /plugins/liqo-provider/liqo/test/0.0.1/<architecture>/ ```
 
     my complete path is the following:
-        ```home/\<usr\>/.terraform.d/plugins/liqo-provider/liqo/test/0.0.1/linux_arm64/```
+        ```home/<usr>/.terraform.d/plugins/liqo-provider/liqo/test/0.0.1/linux_arm64/```
 
 2. from root folder repository move into ***/liqo_provider***
 
