@@ -15,9 +15,8 @@ Follow this example steps to test locally the implemented provider.
 
     ``` mkdir -p /plugins/liqo-provider/liqo/test/0.0.1/\<architecture\>/ ```
 
-my complete path is the following:
-
-    ```home/\<usr\>/.terraform.d/plugins/liqo-provider/liqo/test/0.0.1/linux_arm64/```
+    my complete path is the following:
+        ```home/\<usr\>/.terraform.d/plugins/liqo-provider/liqo/test/0.0.1/linux_arm64/```
 
 2. from root folder repository move into ***/liqo_provider***
 
