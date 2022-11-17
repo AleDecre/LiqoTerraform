@@ -180,21 +180,56 @@ func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		return
 	}
 
-	byte, _ := ioutil.ReadFile(config.KUBERNETES.KUBE_CONFIG_PATH.Value)
+	byte, err := ioutil.ReadFile(config.KUBERNETES.KUBE_CONFIG_PATH.Value)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
+	}
 
 	var clientCfg clientcmd.ClientConfig
 
-	clientCfg, _ = clientcmd.NewClientConfigFromBytes(byte)
+	clientCfg, err = clientcmd.NewClientConfigFromBytes(byte)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
+	}
 
 	var restCfg *rest.Config
 
-	restCfg, _ = clientCfg.ClientConfig()
+	restCfg, err = clientCfg.ClientConfig()
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
+	}
 
 	var CRClient client.Client
 
-	CRClient, _ = client.New(restCfg, client.Options{Scheme: scheme.Scheme})
+	CRClient, err = client.New(restCfg, client.Options{Scheme: scheme.Scheme})
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
+	}
 
-	KubeClient, _ := kubernetes.NewForConfig(restCfg)
+	KubeClient, err := kubernetes.NewForConfig(restCfg)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
+	}
 
 	resp.ResourceData = kubeconfig{
 		CRClient:   CRClient,

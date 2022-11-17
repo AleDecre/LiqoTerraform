@@ -16,6 +16,7 @@ import (
 	foreigncluster "github.com/liqotech/liqo/pkg/utils/foreignCluster"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubeTypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -69,10 +70,6 @@ func (r *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 				},
 				Computed: true,
 			},
-			"error_msg": {
-				Type:     types.StringType,
-				Computed: true,
-			},
 		},
 	}, nil
 }
@@ -87,21 +84,30 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	plan.ErrorMsg = types.StringValue("Success")
-
 	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
 	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
 	}
-	_ = clusterIdentity
 
 	if clusterIdentity.ClusterID == plan.ClusterID.Value {
-		plan.ErrorMsg = types.StringValue("Same ClusterID")
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			"Same ClusterID",
+		)
+		return
 	}
 
 	err = authenticationtokenutils.StoreInSecret(ctx, r.kubeconfig.KubeClient, plan.ClusterID.Value, plan.ClusterToken.Value, plan.LiqoNamespace.Value)
 	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
 	}
 
 	fc, err := foreigncluster.GetForeignClusterByID(ctx, r.kubeconfig.CRClient, plan.ClusterID.Value)
@@ -109,7 +115,11 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		fc = &discoveryv1alpha1.ForeignCluster{ObjectMeta: metav1.ObjectMeta{Name: plan.ClusterName.Value,
 			Labels: map[string]string{discovery.ClusterIDLabel: plan.ClusterID.Value}}}
 	} else if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
 	}
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.kubeconfig.CRClient, fc, func() error {
@@ -137,7 +147,12 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 	})
 
 	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+
+		return
 	}
 
 	// Set state to fully populated data
@@ -172,6 +187,39 @@ func (r *peeringResource) Update(ctx context.Context, req resource.UpdateRequest
 
 // Delete deletes the resource and removes the Terraform state on success.
 func (r *peeringResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+
+	var data peeringResourceModel
+
+	// Read Terraform prior state data into the model
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
+	var foreignCluster discoveryv1alpha1.ForeignCluster
+	if err := r.kubeconfig.CRClient.Get(ctx, kubeTypes.NamespacedName{Name: data.ClusterName.Value}, &foreignCluster); err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Delete Resource",
+			err.Error(),
+		)
+		return
+	}
+
+	// Do not proceed if the peering is not out-of-band and that mode is set.
+	if foreignCluster.Spec.PeeringType != discoveryv1alpha1.PeeringTypeOutOfBand {
+		resp.Diagnostics.AddError(
+			"Unable to Delete Resource",
+			"The peering type towards remote cluster "+data.ClusterName.Value+" is not OOB",
+		)
+		return
+	}
+
+	foreignCluster.Spec.OutgoingPeeringEnabled = discoveryv1alpha1.PeeringEnabledNo
+	if err := r.kubeconfig.CRClient.Update(ctx, &foreignCluster); err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Delete Resource",
+			err.Error(),
+		)
+		return
+	}
+
 }
 
 // Configure adds the provider configured client to the resource.
@@ -190,5 +238,4 @@ type peeringResourceModel struct {
 	ClusterAuthURL types.String `tfsdk:"cluster_authurl"`
 	ClusterToken   types.String `tfsdk:"cluster_token"`
 	LiqoNamespace  types.String `tfsdk:"liqo_namespace"`
-	ErrorMsg       types.String `tfsdk:"error_msg"`
 }

@@ -3,7 +3,6 @@ package liqo
 import (
 	"context"
 	"terraform-provider-test/liqo/attribute_plan_modifier"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -63,10 +62,6 @@ func (r *generateResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diag
 				},
 				Computed: true,
 			},
-			"error_msg": {
-				Type:     types.StringType,
-				Computed: true,
-			},
 		},
 	}, nil
 }
@@ -81,22 +76,32 @@ func (r *generateResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	plan.ErrorMsg = types.StringValue("Success")
-
 	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
 	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
 	}
 	_ = clusterIdentity
 
 	localToken, err := auth.GetToken(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
 	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
 	}
 
 	authEP, err := foreigncluster.GetHomeAuthURL(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
 	if err != nil {
-		plan.ErrorMsg = types.StringValue(err.Error())
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
 	}
 
 	if clusterIdentity.ClusterName == "" {
@@ -136,21 +141,6 @@ func (r *generateResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *generateResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// Retrieve values from plan
-	var plan generateResourceModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	plan.ErrorMsg = types.StringValue(time.Now().Format(time.RFC850))
-
-	diags = resp.State.Set(ctx, plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
@@ -173,5 +163,4 @@ type generateResourceModel struct {
 	AuthEP        types.String `tfsdk:"auth_ep"`
 	LocalToken    types.String `tfsdk:"local_token"`
 	LiqoNamespace types.String `tfsdk:"liqo_namespace"`
-	ErrorMsg      types.String `tfsdk:"error_msg"`
 }
