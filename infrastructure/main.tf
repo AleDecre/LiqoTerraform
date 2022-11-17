@@ -10,25 +10,19 @@ terraform {
   }
 }
 
-provider "kind" {
+provider "liqo" {
+  alias = "rome"
+  kubernetes = {
+    config_path = module.kind["rome"].kubeconfig_path
+  }
 }
 
 provider "liqo" {
-  host                     = ""
-  username                 = ""
-  password                 = ""
-  insecure                 = ""
-  client_certificate       = ""
-  client_key               = ""
-  cluster_ca_certificate   = ""
-  config_path              = ""
-  config_context           = ""
-  config_context_cluster   = ""
-  token                    = ""
-  proxy_url                = ""
-  config_context_auth_info = ""
+  alias = "milan"
+  kubernetes = {
+    config_path = module.kind["milan"].kubeconfig_path
+  }
 }
-
 
 module "kind" {
 
@@ -44,28 +38,40 @@ module "kind" {
 
 }
 
-resource "liqo_generate" "gen" {
+resource "liqo_generate" "gen1" {
+  /*
+    for_each = {
+      for index, cluster in var.clusters.clusters_list :
+      cluster.name => cluster if index != 0 && var.clusters.peering
+    }
+  */
 
-  for_each = {
-    for index, cluster in var.clusters.clusters_list :
-    cluster.name => cluster if index != 0 && var.clusters.peering
-  }
-
-  kubeconfig_path = module.kind[each.value.name].kubeconfig_path
-
-}
-
-resource "liqo_peering" "peer" {
-
-  for_each = {
-    for index, cluster in var.clusters.clusters_list :
-    cluster.name => cluster if index != 0 && var.clusters.peering
-  }
-
-  kubeconfig_path = module.kind[var.clusters.clusters_list[0].name].kubeconfig_path
-  cluster_id      = liqo_generate.gen[each.value.name].cluster_id
-  cluster_name    = liqo_generate.gen[each.value.name].cluster_name
-  cluster_authurl = liqo_generate.gen[each.value.name].auth_ep
-  cluster_token   = liqo_generate.gen[each.value.name].local_token
+  provider = liqo.milan
 
 }
+
+resource "liqo_peering" "peer1" {
+  
+  /*
+    for_each = {
+      for index, cluster in var.clusters.clusters_list :
+      cluster.name => cluster if index != 0 && var.clusters.peering
+    }
+  */
+
+  provider = liqo.rome
+
+  cluster_id      = liqo_generate.gen1.cluster_id
+  cluster_name    = liqo_generate.gen1.cluster_name
+  cluster_authurl = liqo_generate.gen1.auth_ep
+  cluster_token   = liqo_generate.gen1.local_token
+
+}
+/*
+  locals {
+    providers = {
+      rome  = liqo.rome
+      milan = liqo.milan
+    }
+  }
+*/

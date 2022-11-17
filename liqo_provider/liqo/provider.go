@@ -3,6 +3,7 @@ package liqo
 import (
 	"context"
 	"io/ioutil"
+	"terraform-provider-test/liqo/attribute_plan_modifier"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -57,80 +58,114 @@ func (p *liqoProvider) Metadata(_ context.Context, _ provider.MetadataRequest, r
 func (p *liqoProvider) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		Attributes: map[string]tfsdk.Attribute{
-			"host": {
-				Type:        types.StringType,
-				Optional:    true,
-				Description: "The hostname (in form of URI) of Kubernetes master.",
-			},
-			"username": {
-				Type:     types.StringType,
+			"kubernetes": {
 				Optional: true,
-
-				Description: "The username to use for HTTP basic authentication when accessing the Kubernetes master endpoint.",
-			},
-			"password": {
-				Type:     types.StringType,
-				Optional: true,
-
-				Description: "The password to use for HTTP basic authentication when accessing the Kubernetes master endpoint.",
-			},
-			"insecure": {
-				Type:     types.BoolType,
-				Optional: true,
-
-				Description: "Whether server should be accessed without verifying the TLS certificate.",
-			},
-			"client_certificate": {
-				Type:     types.StringType,
-				Optional: true,
-
-				Description: "PEM-encoded client certificate for TLS authentication.",
-			},
-			"client_key": {
-				Type:     types.StringType,
-				Optional: true,
-
-				Description: "PEM-encoded client certificate key for TLS authentication.",
-			},
-			"cluster_ca_certificate": {
-				Type:     types.StringType,
-				Optional: true,
-
-				Description: "PEM-encoded root certificates bundle for TLS authentication.",
-			},
-			"config_path": {
-				Type:     types.StringType,
-				Optional: true,
-
-				Description: "Path to the kube config file. Can be set with KUBE_CONFIG_PATH.",
-			},
-			"config_context": {
-				Type:     types.StringType,
-				Optional: true,
-			},
-			"config_context_auth_info": {
-				Type:     types.StringType,
-				Optional: true,
-
-				Description: "",
-			},
-			"config_context_cluster": {
-				Type:     types.StringType,
-				Optional: true,
-
-				Description: "",
-			},
-			"token": {
-				Type:     types.StringType,
-				Optional: true,
-
-				Description: "Token to authenticate an service account",
-			},
-			"proxy_url": {
-				Type:     types.StringType,
-				Optional: true,
-
-				Description: "URL to the proxy to be used for all API requests",
+				Computed: true,
+				Attributes: tfsdk.SingleNestedAttributes(map[string]tfsdk.Attribute{
+					"host": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "The hostname (in form of URI) of Kubernetes master.",
+					},
+					"username": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "The username to use for HTTP basic authentication when accessing the Kubernetes master endpoint.",
+					},
+					"password": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "The password to use for HTTP basic authentication when accessing the Kubernetes master endpoint.",
+					},
+					"insecure": {
+						Type:     types.BoolType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.BoolValue(false)),
+						},
+						Description: "Whether server should be accessed without verifying the TLS certificate.",
+					},
+					"client_certificate": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "PEM-encoded client certificate for TLS authentication.",
+					},
+					"client_key": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "PEM-encoded client certificate key for TLS authentication.",
+					},
+					"cluster_ca_certificate": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "PEM-encoded root certificates bundle for TLS authentication.",
+					},
+					"config_path": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "Path to the kube config file. Can be set with KUBE_CONFIG_PATH.",
+					},
+					"config_context": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+					},
+					"config_context_auth_info": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "",
+					},
+					"config_context_cluster": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "",
+					},
+					"token": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "Token to authenticate an service account",
+					},
+					"proxy_url": {
+						Type:     types.StringType,
+						Optional: true,
+						PlanModifiers: []tfsdk.AttributePlanModifier{
+							attribute_plan_modifier.DefaultValue(types.StringValue("")),
+						},
+						Description: "URL to the proxy to be used for all API requests",
+					},
+				}),
 			},
 		},
 	}, nil
@@ -145,7 +180,7 @@ func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		return
 	}
 
-	byte, _ := ioutil.ReadFile(config.KUBE_CONFIG_PATH.Value)
+	byte, _ := ioutil.ReadFile(config.KUBERNETES.KUBE_CONFIG_PATH.Value)
 
 	var clientCfg clientcmd.ClientConfig
 
@@ -180,12 +215,11 @@ func (p *liqoProvider) Resources(_ context.Context) []func() resource.Resource {
 	}
 }
 
-// liqoProviderModel maps provider schema data to a Go type.
-type liqoProviderModel struct {
+type kube_conf struct {
 	KUBE_HOST                 types.String `tfsdk:"host"`
 	KUBE_USER                 types.String `tfsdk:"username"`
 	KUBE_PASSWORD             types.String `tfsdk:"password"`
-	KUBE_INSECURE             types.String `tfsdk:"insecure"`
+	KUBE_INSECURE             types.Bool   `tfsdk:"insecure"`
 	KUBE_CLIENT_CERT_DATA     types.String `tfsdk:"client_certificate"`
 	KUBE_CLIENT_KEY_DATA      types.String `tfsdk:"client_key"`
 	KUBE_CLUSTER_CA_CERT_DATA types.String `tfsdk:"cluster_ca_certificate"`
@@ -195,4 +229,9 @@ type liqoProviderModel struct {
 	KUBE_CTX_CLUSTER          types.String `tfsdk:"config_context_cluster"`
 	KUBE_TOKEN                types.String `tfsdk:"token"`
 	KUBE_PROXY_URL            types.String `tfsdk:"proxy_url"`
+}
+
+// liqoProviderModel maps provider schema data to a Go type.
+type liqoProviderModel struct {
+	KUBERNETES *kube_conf `tfsdk:"kubernetes"`
 }

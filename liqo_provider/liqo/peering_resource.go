@@ -3,6 +3,7 @@ package liqo
 import (
 	"context"
 	"fmt"
+	"terraform-provider-test/liqo/attribute_plan_modifier"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -44,10 +45,6 @@ func (r *peeringResource) Metadata(_ context.Context, req resource.MetadataReque
 func (r *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		Attributes: map[string]tfsdk.Attribute{
-			"kubeconfig_path": {
-				Type:     types.StringType,
-				Required: true,
-			},
 			"cluster_id": {
 				Type:     types.StringType,
 				Required: true,
@@ -67,6 +64,9 @@ func (r *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 			"liqo_namespace": {
 				Type:     types.StringType,
 				Optional: true,
+				PlanModifiers: []tfsdk.AttributePlanModifier{
+					attribute_plan_modifier.DefaultValue(types.StringValue("liqo")),
+				},
 				Computed: true,
 			},
 			"error_msg": {
@@ -89,14 +89,7 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 
 	plan.ErrorMsg = types.StringValue("Success")
 
-	LiqoNamespace := plan.LiqoNamespace.Value
-
-	if plan.LiqoNamespace.Value == "" {
-		plan.LiqoNamespace = types.StringValue("liqo")
-		LiqoNamespace = "liqo"
-	}
-
-	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, LiqoNamespace)
+	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
@@ -106,7 +99,7 @@ func (r *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		plan.ErrorMsg = types.StringValue("Same ClusterID")
 	}
 
-	err = authenticationtokenutils.StoreInSecret(ctx, r.kubeconfig.KubeClient, plan.ClusterID.Value, plan.ClusterToken.Value, LiqoNamespace)
+	err = authenticationtokenutils.StoreInSecret(ctx, r.kubeconfig.KubeClient, plan.ClusterID.Value, plan.ClusterToken.Value, plan.LiqoNamespace.Value)
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
@@ -192,7 +185,6 @@ func (r *peeringResource) Configure(_ context.Context, req resource.ConfigureReq
 
 // peeringResourceModel maps the resource schema data.
 type peeringResourceModel struct {
-	KubeconfigPath types.String `tfsdk:"kubeconfig_path"`
 	ClusterID      types.String `tfsdk:"cluster_id"`
 	ClusterName    types.String `tfsdk:"cluster_name"`
 	ClusterAuthURL types.String `tfsdk:"cluster_authurl"`

@@ -2,6 +2,7 @@ package liqo
 
 import (
 	"context"
+	"terraform-provider-test/liqo/attribute_plan_modifier"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -38,10 +39,6 @@ func (r *generateResource) Metadata(_ context.Context, req resource.MetadataRequ
 func (r *generateResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		Attributes: map[string]tfsdk.Attribute{
-			"kubeconfig_path": {
-				Type:     types.StringType,
-				Required: true,
-			},
 			"cluster_id": {
 				Type:     types.StringType,
 				Computed: true,
@@ -61,6 +58,9 @@ func (r *generateResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diag
 			"liqo_namespace": {
 				Type:     types.StringType,
 				Optional: true,
+				PlanModifiers: []tfsdk.AttributePlanModifier{
+					attribute_plan_modifier.DefaultValue(types.StringValue("liqo")),
+				},
 				Computed: true,
 			},
 			"error_msg": {
@@ -83,25 +83,18 @@ func (r *generateResource) Create(ctx context.Context, req resource.CreateReques
 
 	plan.ErrorMsg = types.StringValue("Success")
 
-	LiqoNamespace := plan.LiqoNamespace.Value
-
-	if plan.LiqoNamespace.Value == "" {
-		plan.LiqoNamespace = types.StringValue("liqo")
-		LiqoNamespace = "liqo"
-	}
-
-	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, LiqoNamespace)
+	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
 	_ = clusterIdentity
 
-	localToken, err := auth.GetToken(ctx, r.kubeconfig.CRClient, LiqoNamespace)
+	localToken, err := auth.GetToken(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
 
-	authEP, err := foreigncluster.GetHomeAuthURL(ctx, r.kubeconfig.CRClient, LiqoNamespace)
+	authEP, err := foreigncluster.GetHomeAuthURL(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
 	if err != nil {
 		plan.ErrorMsg = types.StringValue(err.Error())
 	}
@@ -175,11 +168,10 @@ func (r *generateResource) Configure(_ context.Context, req resource.ConfigureRe
 
 // generateResourceModel maps the resource schema data.
 type generateResourceModel struct {
-	KubeconfigPath types.String `tfsdk:"kubeconfig_path"`
-	ClusterID      types.String `tfsdk:"cluster_id"`
-	ClusterName    types.String `tfsdk:"cluster_name"`
-	AuthEP         types.String `tfsdk:"auth_ep"`
-	LocalToken     types.String `tfsdk:"local_token"`
-	LiqoNamespace  types.String `tfsdk:"liqo_namespace"`
-	ErrorMsg       types.String `tfsdk:"error_msg"`
+	ClusterID     types.String `tfsdk:"cluster_id"`
+	ClusterName   types.String `tfsdk:"cluster_name"`
+	AuthEP        types.String `tfsdk:"auth_ep"`
+	LocalToken    types.String `tfsdk:"local_token"`
+	LiqoNamespace types.String `tfsdk:"liqo_namespace"`
+	ErrorMsg      types.String `tfsdk:"error_msg"`
 }
