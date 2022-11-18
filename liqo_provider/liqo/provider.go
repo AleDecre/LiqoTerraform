@@ -246,7 +246,7 @@ func (p *liqoProvider) DataSources(_ context.Context) []func() datasource.DataSo
 // Resources defines the resources implemented in the provider.
 func (p *liqoProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewPeeringResource, NewGenerateResource,
+		NewPeeringResource, NewGenerateResource, NewOffloadResource,
 	}
 }
 

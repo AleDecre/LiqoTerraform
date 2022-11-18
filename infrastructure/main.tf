@@ -38,7 +38,7 @@ module "kind" {
 
 }
 
-resource "liqo_generate" "gen1" {
+resource "liqo_generate" "generate" {
   /*
     for_each = {
       for index, cluster in var.clusters.clusters_list :
@@ -50,8 +50,8 @@ resource "liqo_generate" "gen1" {
 
 }
 
-resource "liqo_peering" "peer1" {
-  
+resource "liqo_peering" "peering" {
+
   /*
     for_each = {
       for index, cluster in var.clusters.clusters_list :
@@ -61,17 +61,31 @@ resource "liqo_peering" "peer1" {
 
   provider = liqo.rome
 
-  cluster_id      = liqo_generate.gen1.cluster_id
-  cluster_name    = liqo_generate.gen1.cluster_name
-  cluster_authurl = liqo_generate.gen1.auth_ep
-  cluster_token   = liqo_generate.gen1.local_token
+  cluster_id      = liqo_generate.generate.cluster_id
+  cluster_name    = liqo_generate.generate.cluster_name
+  cluster_authurl = liqo_generate.generate.auth_ep
+  cluster_token   = liqo_generate.generate.local_token
 
 }
-/*
-  locals {
-    providers = {
-      rome  = liqo.rome
-      milan = liqo.milan
+
+resource "null_resource" "create_namespace" {
+
+  provisioner "local-exec" {
+    command = "kubectl create namespace liqo-demo"
+    environment = {
+      KUBECONFIG = module.kind["rome"].kubeconfig_path
     }
   }
-*/
+
+}
+
+resource "liqo_offload" "offload" {
+  depends_on = [
+    null_resource.create_namespace,
+    liqo_peering.peering
+  ]
+
+  provider = liqo.rome
+
+  namespace = "liqo-demo"
+}
