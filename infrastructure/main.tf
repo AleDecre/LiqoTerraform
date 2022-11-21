@@ -71,7 +71,7 @@ resource "liqo_peering" "peering" {
 resource "null_resource" "create_namespace" {
 
   provisioner "local-exec" {
-    command = "kubectl create namespace liqo-demo"
+    command = "kubectl create namespace liqo-demo && kubectl label nodes liqo-milan disktype=ssd"
     environment = {
       KUBECONFIG = module.kind["rome"].kubeconfig_path
     }
@@ -87,99 +87,19 @@ resource "liqo_offload" "offload" {
 
   provider = liqo.rome
 
+
+
   node_selector_terms = [
     {
-      node_selector_term = [
+      match_expressions = [
         {
           key      = "disktype"
           operator = "In"
-          values   = "ssd"
+          values   = ["ssd", "hdd"]
         },
-        {
-          key      = "cputype"
-          operator = "In"
-          values   = "intel"
-        }
-      ]
-      node_selector_term = [
-        {
-          key      = "ramtype"
-          operator = "In"
-          values   = "ddr4"
-        },
-      ]
-    },
-    {
-      node_selector_term = [
-        {
-          key      = "disktype"
-          operator = "In"
-          values   = "hdd"
-        },
-        {
-          key      = "cputype"
-          operator = "In"
-          values   = "arm"
-        }
       ]
     }
   ]
-
-  /*
-
-
-      {
-        key      = "disktype"
-        operator = "In"
-        values   = "ssd"
-      },
-      {
-        key      = "disktype"
-        operator = "In"
-        values   = "ssd"
-      }
-
-
-
-
-
-    "node_selector": {
-				Type:     types.ListType{},
-				Optional: true,
-				Attributes: tfsdk.SingleNestedAttributes(map[string]tfsdk.Attribute{
-					"node_selector_term": {
-						Optional: true,
-						Computed: true,
-						Attributes: tfsdk.SingleNestedAttributes(map[string]tfsdk.Attribute{
-							"match_expression": {
-								Type:     types.ListType{},
-								Optional: true,
-								Computed: true,
-								Attributes: tfsdk.SingleNestedAttributes(map[string]tfsdk.Attribute{
-									"key": {
-										Type:     types.StringType,
-										Required: true,
-									},
-									"operator": {
-										Type:     types.StringType,
-										Required: true,
-									},
-									"values": {
-										Type:     types.ListType{ElemType: types.StringType},
-										Optional: true,
-										PlanModifiers: []tfsdk.AttributePlanModifier{
-											attribute_plan_modifier.DefaultValue(types.StringValue("")),
-										},
-										Computed: true,
-									},
-								}),
-							},
-						}),
-					},
-				}),
-			},
-  
-  */
 
   namespace = "liqo-demo"
 }

@@ -10,8 +10,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	offloadingv1alpha1 "github.com/liqotech/liqo/apis/offloading/v1alpha1"
 	"github.com/liqotech/liqo/pkg/consts"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -59,10 +61,29 @@ func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 				},
 				Computed: true,
 			},
+
+			/*
+				type match_expression struct {
+					Key      types.String   `tfsdk:"key"`
+					Operator types.String   `tfsdk:"operator"`
+					Values   []types.String `tfsdk:"values"`
+				}
+
+				type match_expressions []match_expression
+
+				// offloadResourceModel maps the resource schema data.
+				type offloadResourceModel struct {
+					Namespace                types.String        `tfsdk:"namespace"`
+					PodOffloadingStrategy    types.String        `tfsdk:"pod_offloading_strategy"`
+					NamespaceMappingStrategy types.String        `tfsdk:"namespace_mapping_strategy"`
+					NodeSelectorTerms        []match_expressions `tfsdk:"node_selector_terms"`
+				}
+			*/
+
 			"node_selector_terms": {
 				Optional: true,
 				Attributes: tfsdk.ListNestedAttributes(map[string]tfsdk.Attribute{
-					"node_selector_term": {
+					"match_expressions": {
 						Optional: true,
 						Computed: true,
 						Attributes: tfsdk.ListNestedAttributes(map[string]tfsdk.Attribute{
@@ -75,12 +96,8 @@ func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 								Required: true,
 							},
 							"values": {
-								Type:     types.StringType,
+								Type:     types.ListType{ElemType: types.StringType},
 								Optional: true,
-								PlanModifiers: []tfsdk.AttributePlanModifier{
-									attribute_plan_modifier.DefaultValue(types.StringValue("")),
-								},
-								Computed: true,
 							},
 						}),
 					},
@@ -100,64 +117,68 @@ func (o *offloadResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	/*
-		var ClusterSelector [][]metav1.LabelSelectorRequirement
+	var ClusterSelector [][]metav1.LabelSelectorRequirement
 
-		for _, selector := range plan.ClusterSelector {
-			s, err := metav1.ParseToLabelSelector(selector.Value)
-			if err != nil {
-				resp.Diagnostics.AddError(
-					"Unable to Create Resource",
-					err.Error(),
-				)
-				return
-			}
-
-			// Convert MatchLabels into MatchExpressions
-			for key, value := range s.MatchLabels {
-				req := metav1.LabelSelectorRequirement{Key: key, Operator: metav1.LabelSelectorOpIn, Values: []string{value}}
-				s.MatchExpressions = append(s.MatchExpressions, req)
-			}
-
-			ClusterSelector = append(ClusterSelector, s.MatchExpressions)
+	for _, selector := range plan.NodeSelectorTerms {
+		s := &metav1.LabelSelector{
+			MatchLabels:      map[string]string{},
+			MatchExpressions: []metav1.LabelSelectorRequirement{},
 		}
 
-		terms := []corev1.NodeSelectorTerm{}
+		for _, match_expression := range selector.MatchExpressions {
 
-		for _, selector := range ClusterSelector {
-			var requirements []corev1.NodeSelectorRequirement
+			var values []string
 
-			for _, r := range selector {
-				requirements = append(requirements, corev1.NodeSelectorRequirement{
-					Key:      r.Key,
-					Operator: corev1.NodeSelectorOperator(r.Operator),
-					Values:   r.Values,
-				})
+			for _, value := range match_expression.Values {
+				values = append(values, value.Value)
 			}
-
-			terms = append(terms, corev1.NodeSelectorTerm{MatchExpressions: requirements})
+			req := metav1.LabelSelectorRequirement{
+				Key:      match_expression.Key.Value,
+				Operator: metav1.LabelSelectorOperator(match_expression.Operator.Value),
+				Values:   values,
+			}
+			s.MatchExpressions = append(s.MatchExpressions, req)
 		}
 
-		nsoff := &offloadingv1alpha1.NamespaceOffloading{ObjectMeta: metav1.ObjectMeta{
-			Name: consts.DefaultNamespaceOffloadingName, Namespace: plan.Namespace.Value}}
+		ClusterSelector = append(ClusterSelector, s.MatchExpressions)
+	}
 
-		//var oldStrategy offloadingv1alpha1.PodOffloadingStrategyType
-		_, err := controllerutil.CreateOrUpdate(ctx, o.kubeconfig.CRClient, nsoff, func() error {
-			//oldStrategy = nsoff.Spec.PodOffloadingStrategy
-			nsoff.Spec.PodOffloadingStrategy = offloadingv1alpha1.PodOffloadingStrategyType(plan.PodOffloadingStrategy.Value)
-			nsoff.Spec.NamespaceMappingStrategy = offloadingv1alpha1.NamespaceMappingStrategyType(plan.NamespaceMappingStrategy.Value)
-			nsoff.Spec.ClusterSelector = corev1.NodeSelector{NodeSelectorTerms: terms}
-			return nil
-		})
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Unable to Create Resource",
-				err.Error(),
-			)
+	terms := []corev1.NodeSelectorTerm{}
 
-			return
+	for _, selector := range ClusterSelector {
+		var requirements []corev1.NodeSelectorRequirement
+
+		for _, r := range selector {
+			requirements = append(requirements, corev1.NodeSelectorRequirement{
+				Key:      r.Key,
+				Operator: corev1.NodeSelectorOperator(r.Operator),
+				Values:   r.Values,
+			})
 		}
-	*/
+
+		terms = append(terms, corev1.NodeSelectorTerm{MatchExpressions: requirements})
+	}
+
+	nsoff := &offloadingv1alpha1.NamespaceOffloading{ObjectMeta: metav1.ObjectMeta{
+		Name: consts.DefaultNamespaceOffloadingName, Namespace: plan.Namespace.Value}}
+
+	//var oldStrategy offloadingv1alpha1.PodOffloadingStrategyType
+	_, err := controllerutil.CreateOrUpdate(ctx, o.kubeconfig.CRClient, nsoff, func() error {
+		//oldStrategy = nsoff.Spec.PodOffloadingStrategy
+		nsoff.Spec.PodOffloadingStrategy = offloadingv1alpha1.PodOffloadingStrategyType(plan.PodOffloadingStrategy.Value)
+		nsoff.Spec.NamespaceMappingStrategy = offloadingv1alpha1.NamespaceMappingStrategyType(plan.NamespaceMappingStrategy.Value)
+		nsoff.Spec.ClusterSelector = corev1.NodeSelector{NodeSelectorTerms: terms}
+		return nil
+	})
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+
+		return
+	}
+
 	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
@@ -222,14 +243,14 @@ type match_expression struct {
 	Values   []types.String `tfsdk:"values"`
 }
 
-type node_selector_term struct {
-	MatchExpressions []match_expression `tfsdk:"match_expression"`
+type match_expressions struct {
+	MatchExpressions []match_expression `tfsdk:"match_expressions"`
 }
 
 // offloadResourceModel maps the resource schema data.
 type offloadResourceModel struct {
-	Namespace                types.String         `tfsdk:"namespace"`
-	PodOffloadingStrategy    types.String         `tfsdk:"pod_offloading_strategy"`
-	NamespaceMappingStrategy types.String         `tfsdk:"namespace_mapping_strategy"`
-	NodeSelector             []node_selector_term `tfsdk:"node_selector"`
+	Namespace                types.String        `tfsdk:"namespace"`
+	PodOffloadingStrategy    types.String        `tfsdk:"pod_offloading_strategy"`
+	NamespaceMappingStrategy types.String        `tfsdk:"namespace_mapping_strategy"`
+	NodeSelectorTerms        []match_expressions `tfsdk:"node_selector_terms"`
 }
