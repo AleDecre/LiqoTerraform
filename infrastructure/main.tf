@@ -87,5 +87,99 @@ resource "liqo_offload" "offload" {
 
   provider = liqo.rome
 
+  node_selector_terms = [
+    {
+      node_selector_term = [
+        {
+          key      = "disktype"
+          operator = "In"
+          values   = "ssd"
+        },
+        {
+          key      = "cputype"
+          operator = "In"
+          values   = "intel"
+        }
+      ]
+      node_selector_term = [
+        {
+          key      = "ramtype"
+          operator = "In"
+          values   = "ddr4"
+        },
+      ]
+    },
+    {
+      node_selector_term = [
+        {
+          key      = "disktype"
+          operator = "In"
+          values   = "hdd"
+        },
+        {
+          key      = "cputype"
+          operator = "In"
+          values   = "arm"
+        }
+      ]
+    }
+  ]
+
+  /*
+
+
+      {
+        key      = "disktype"
+        operator = "In"
+        values   = "ssd"
+      },
+      {
+        key      = "disktype"
+        operator = "In"
+        values   = "ssd"
+      }
+
+
+
+
+
+    "node_selector": {
+				Type:     types.ListType{},
+				Optional: true,
+				Attributes: tfsdk.SingleNestedAttributes(map[string]tfsdk.Attribute{
+					"node_selector_term": {
+						Optional: true,
+						Computed: true,
+						Attributes: tfsdk.SingleNestedAttributes(map[string]tfsdk.Attribute{
+							"match_expression": {
+								Type:     types.ListType{},
+								Optional: true,
+								Computed: true,
+								Attributes: tfsdk.SingleNestedAttributes(map[string]tfsdk.Attribute{
+									"key": {
+										Type:     types.StringType,
+										Required: true,
+									},
+									"operator": {
+										Type:     types.StringType,
+										Required: true,
+									},
+									"values": {
+										Type:     types.ListType{ElemType: types.StringType},
+										Optional: true,
+										PlanModifiers: []tfsdk.AttributePlanModifier{
+											attribute_plan_modifier.DefaultValue(types.StringValue("")),
+										},
+										Computed: true,
+									},
+								}),
+							},
+						}),
+					},
+				}),
+			},
+  
+  */
+
   namespace = "liqo-demo"
 }
