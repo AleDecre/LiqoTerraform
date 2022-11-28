@@ -70,6 +70,10 @@ resource "liqo_peering" "peering" {
 
 resource "null_resource" "create_namespace" {
 
+  depends_on = [
+    liqo_peering.peering
+  ]
+
   provisioner "local-exec" {
     command = "kubectl create namespace liqo-demo && kubectl label nodes liqo-milan disktype=ssd"
     environment = {
