@@ -84,7 +84,7 @@ func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, p.kubeconfig.CRClient, plan.LiqoNamespace.Value)
+	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, p.kubeconfig.CRClient, plan.LiqoNamespace.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create Resource",
@@ -93,7 +93,7 @@ func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	if clusterIdentity.ClusterID == plan.ClusterID.Value {
+	if clusterIdentity.ClusterID == plan.ClusterID.ValueString() {
 		resp.Diagnostics.AddError(
 			"Unable to Create Resource",
 			"Same ClusterID",
@@ -101,7 +101,7 @@ func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	err = authenticationtokenutils.StoreInSecret(ctx, p.kubeconfig.KubeClient, plan.ClusterID.Value, plan.ClusterToken.Value, plan.LiqoNamespace.Value)
+	err = authenticationtokenutils.StoreInSecret(ctx, p.kubeconfig.KubeClient, plan.ClusterID.ValueString(), plan.ClusterToken.ValueString(), plan.LiqoNamespace.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create Resource",
@@ -110,10 +110,10 @@ func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	fc, err := foreigncluster.GetForeignClusterByID(ctx, p.kubeconfig.CRClient, plan.ClusterID.Value)
+	fc, err := foreigncluster.GetForeignClusterByID(ctx, p.kubeconfig.CRClient, plan.ClusterID.ValueString())
 	if kerrors.IsNotFound(err) {
-		fc = &discoveryv1alpha1.ForeignCluster{ObjectMeta: metav1.ObjectMeta{Name: plan.ClusterName.Value,
-			Labels: map[string]string{discovery.ClusterIDLabel: plan.ClusterID.Value}}}
+		fc = &discoveryv1alpha1.ForeignCluster{ObjectMeta: metav1.ObjectMeta{Name: plan.ClusterName.ValueString(),
+			Labels: map[string]string{discovery.ClusterIDLabel: plan.ClusterID.ValueString()}}}
 	} else if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create Resource",
@@ -125,16 +125,16 @@ func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 	_, err = controllerutil.CreateOrUpdate(ctx, p.kubeconfig.CRClient, fc, func() error {
 		if fc.Spec.PeeringType != discoveryv1alpha1.PeeringTypeUnknown && fc.Spec.PeeringType != discoveryv1alpha1.PeeringTypeOutOfBand {
 			return fmt.Errorf("a peering of type %s already exists towards remote cluster %q, cannot be changed to %s",
-				fc.Spec.PeeringType, plan.ClusterName.Value, discoveryv1alpha1.PeeringTypeOutOfBand)
+				fc.Spec.PeeringType, plan.ClusterName.ValueString(), discoveryv1alpha1.PeeringTypeOutOfBand)
 		}
 
 		fc.Spec.PeeringType = discoveryv1alpha1.PeeringTypeOutOfBand
-		fc.Spec.ClusterIdentity.ClusterID = plan.ClusterID.Value
+		fc.Spec.ClusterIdentity.ClusterID = plan.ClusterID.ValueString()
 		if fc.Spec.ClusterIdentity.ClusterName == "" {
-			fc.Spec.ClusterIdentity.ClusterName = plan.ClusterName.Value
+			fc.Spec.ClusterIdentity.ClusterName = plan.ClusterName.ValueString()
 		}
 
-		fc.Spec.ForeignAuthURL = plan.ClusterAuthURL.Value
+		fc.Spec.ForeignAuthURL = plan.ClusterAuthURL.ValueString()
 		fc.Spec.ForeignProxyURL = ""
 		fc.Spec.OutgoingPeeringEnabled = discoveryv1alpha1.PeeringEnabledYes
 		if fc.Spec.IncomingPeeringEnabled == "" {
@@ -183,6 +183,10 @@ func (p *peeringResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (p *peeringResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	resp.Diagnostics.AddError(
+		"Unable to Update Resource",
+		"Update is not supported/permitted yet.",
+	)
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
@@ -194,7 +198,7 @@ func (p *peeringResource) Delete(ctx context.Context, req resource.DeleteRequest
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 
 	var foreignCluster discoveryv1alpha1.ForeignCluster
-	if err := p.kubeconfig.CRClient.Get(ctx, kubeTypes.NamespacedName{Name: data.ClusterName.Value}, &foreignCluster); err != nil {
+	if err := p.kubeconfig.CRClient.Get(ctx, kubeTypes.NamespacedName{Name: data.ClusterName.ValueString()}, &foreignCluster); err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Delete Resource",
 			err.Error(),
@@ -206,7 +210,7 @@ func (p *peeringResource) Delete(ctx context.Context, req resource.DeleteRequest
 	if foreignCluster.Spec.PeeringType != discoveryv1alpha1.PeeringTypeOutOfBand {
 		resp.Diagnostics.AddError(
 			"Unable to Delete Resource",
-			"The peering type towards remote cluster "+data.ClusterName.Value+" is not OOB",
+			"The peering type towards remote cluster "+data.ClusterName.ValueString()+" is not OOB",
 		)
 		return
 	}

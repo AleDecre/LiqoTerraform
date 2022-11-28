@@ -117,7 +117,7 @@ func (o *offloadResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	var ClusterSelector [][]metav1.LabelSelectorRequirement
+	var clusterSelector [][]metav1.LabelSelectorRequirement
 
 	for _, selector := range plan.NodeSelectorTerms {
 		s := &metav1.LabelSelector{
@@ -130,22 +130,22 @@ func (o *offloadResource) Create(ctx context.Context, req resource.CreateRequest
 			var values []string
 
 			for _, value := range match_expression.Values {
-				values = append(values, value.Value)
+				values = append(values, value.ValueString())
 			}
 			req := metav1.LabelSelectorRequirement{
-				Key:      match_expression.Key.Value,
-				Operator: metav1.LabelSelectorOperator(match_expression.Operator.Value),
+				Key:      match_expression.Key.ValueString(),
+				Operator: metav1.LabelSelectorOperator(match_expression.Operator.ValueString()),
 				Values:   values,
 			}
 			s.MatchExpressions = append(s.MatchExpressions, req)
 		}
 
-		ClusterSelector = append(ClusterSelector, s.MatchExpressions)
+		clusterSelector = append(clusterSelector, s.MatchExpressions)
 	}
 
 	terms := []corev1.NodeSelectorTerm{}
 
-	for _, selector := range ClusterSelector {
+	for _, selector := range clusterSelector {
 		var requirements []corev1.NodeSelectorRequirement
 
 		for _, r := range selector {
@@ -160,13 +160,13 @@ func (o *offloadResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	nsoff := &offloadingv1alpha1.NamespaceOffloading{ObjectMeta: metav1.ObjectMeta{
-		Name: consts.DefaultNamespaceOffloadingName, Namespace: plan.Namespace.Value}}
+		Name: consts.DefaultNamespaceOffloadingName, Namespace: plan.Namespace.ValueString()}}
 
 	//var oldStrategy offloadingv1alpha1.PodOffloadingStrategyType
 	_, err := controllerutil.CreateOrUpdate(ctx, o.kubeconfig.CRClient, nsoff, func() error {
 		//oldStrategy = nsoff.Spec.PodOffloadingStrategy
-		nsoff.Spec.PodOffloadingStrategy = offloadingv1alpha1.PodOffloadingStrategyType(plan.PodOffloadingStrategy.Value)
-		nsoff.Spec.NamespaceMappingStrategy = offloadingv1alpha1.NamespaceMappingStrategyType(plan.NamespaceMappingStrategy.Value)
+		nsoff.Spec.PodOffloadingStrategy = offloadingv1alpha1.PodOffloadingStrategyType(plan.PodOffloadingStrategy.ValueString())
+		nsoff.Spec.NamespaceMappingStrategy = offloadingv1alpha1.NamespaceMappingStrategyType(plan.NamespaceMappingStrategy.ValueString())
 		nsoff.Spec.ClusterSelector = corev1.NodeSelector{NodeSelectorTerms: terms}
 		return nil
 	})
@@ -207,6 +207,10 @@ func (o *offloadResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (o *offloadResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	resp.Diagnostics.AddError(
+		"Unable to Update Resource",
+		"Update is not supported/permitted yet.",
+	)
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
@@ -217,7 +221,7 @@ func (o *offloadResource) Delete(ctx context.Context, req resource.DeleteRequest
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 
 	nsoff := &offloadingv1alpha1.NamespaceOffloading{ObjectMeta: metav1.ObjectMeta{
-		Name: consts.DefaultNamespaceOffloadingName, Namespace: data.Namespace.Value}}
+		Name: consts.DefaultNamespaceOffloadingName, Namespace: data.Namespace.ValueString()}}
 	if err := o.kubeconfig.CRClient.Delete(ctx, nsoff); client.IgnoreNotFound(err) != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Delete Resource",

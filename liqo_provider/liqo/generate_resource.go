@@ -76,17 +76,7 @@ func (r *generateResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Create Resource",
-			err.Error(),
-		)
-		return
-	}
-	_ = clusterIdentity
-
-	localToken, err := auth.GetToken(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
+	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create Resource",
@@ -95,7 +85,16 @@ func (r *generateResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	authEP, err := foreigncluster.GetHomeAuthURL(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.Value)
+	localToken, err := auth.GetToken(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
+	}
+
+	authEP, err := foreigncluster.GetHomeAuthURL(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create Resource",
@@ -141,6 +140,10 @@ func (r *generateResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *generateResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	resp.Diagnostics.AddError(
+		"Unable to Update Resource",
+		"Update is not supported/permitted yet.",
+	)
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
