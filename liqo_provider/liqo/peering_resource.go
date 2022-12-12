@@ -21,28 +21,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// Ensure the implementation satisfies the expected interfaces.
 var (
 	_ resource.Resource              = &peeringResource{}
 	_ resource.ResourceWithConfigure = &peeringResource{}
 )
 
-// NewPeeringResource is a helper function to simplify the provider implementation.
 func NewPeeringResource() resource.Resource {
 	return &peeringResource{}
 }
 
-// peeringResource is the resource implementation.
 type peeringResource struct {
 	kubeconfig kubeconfig
 }
 
-// Metadata returns the resource type name.
 func (p *peeringResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_peering"
 }
 
-// GetSchema defines the schema for the resource.
 func (p *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		Attributes: map[string]tfsdk.Attribute{
@@ -74,9 +69,7 @@ func (p *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 	}, nil
 }
 
-// Create a new resource
 func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	// Retrieve values from plan
 	var plan peeringResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -155,7 +148,6 @@ func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -163,9 +155,7 @@ func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 }
 
-// Read resource information
 func (p *peeringResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	// Get current state
 	var state peeringResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -173,7 +163,6 @@ func (p *peeringResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -181,7 +170,6 @@ func (p *peeringResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 }
 
-// Update updates the resource and sets the updated Terraform state on success.
 func (p *peeringResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	resp.Diagnostics.AddError(
 		"Unable to Update Resource",
@@ -189,12 +177,10 @@ func (p *peeringResource) Update(ctx context.Context, req resource.UpdateRequest
 	)
 }
 
-// Delete deletes the resource and removes the Terraform state on success.
 func (p *peeringResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 
 	var data peeringResourceModel
 
-	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 
 	var foreignCluster discoveryv1alpha1.ForeignCluster
@@ -206,7 +192,6 @@ func (p *peeringResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	// Do not proceed if the peering is not out-of-band and that mode is set.
 	if foreignCluster.Spec.PeeringType != discoveryv1alpha1.PeeringTypeOutOfBand {
 		resp.Diagnostics.AddError(
 			"Unable to Delete Resource",
@@ -226,7 +211,6 @@ func (p *peeringResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 }
 
-// Configure adds the provider configured client to the resource.
 func (p *peeringResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
@@ -235,7 +219,6 @@ func (p *peeringResource) Configure(_ context.Context, req resource.ConfigureReq
 	p.kubeconfig = req.ProviderData.(kubeconfig)
 }
 
-// peeringResourceModel maps the resource schema data.
 type peeringResourceModel struct {
 	ClusterID      types.String `tfsdk:"cluster_id"`
 	ClusterName    types.String `tfsdk:"cluster_name"`

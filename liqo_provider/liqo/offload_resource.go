@@ -16,28 +16,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// Ensure the implementation satisfies the expected interfaces.
 var (
 	_ resource.Resource              = &offloadResource{}
 	_ resource.ResourceWithConfigure = &offloadResource{}
 )
 
-// NewOffloadResource is a helper function to simplify the provider implementation.
 func NewOffloadResource() resource.Resource {
 	return &offloadResource{}
 }
 
-// offloadResource is the resource implementation.
 type offloadResource struct {
 	kubeconfig kubeconfig
 }
 
-// Metadata returns the resource type name.
 func (o *offloadResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_offload"
 }
 
-// GetSchema defines the schema for the resource.
 func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		Attributes: map[string]tfsdk.Attribute{
@@ -61,25 +56,6 @@ func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 				},
 				Computed: true,
 			},
-
-			/*
-				type match_expression struct {
-					Key      types.String   `tfsdk:"key"`
-					Operator types.String   `tfsdk:"operator"`
-					Values   []types.String `tfsdk:"values"`
-				}
-
-				type match_expressions []match_expression
-
-				// offloadResourceModel maps the resource schema data.
-				type offloadResourceModel struct {
-					Namespace                types.String        `tfsdk:"namespace"`
-					PodOffloadingStrategy    types.String        `tfsdk:"pod_offloading_strategy"`
-					NamespaceMappingStrategy types.String        `tfsdk:"namespace_mapping_strategy"`
-					NodeSelectorTerms        []match_expressions `tfsdk:"node_selector_terms"`
-				}
-			*/
-
 			"node_selector_terms": {
 				Optional: true,
 				Attributes: tfsdk.ListNestedAttributes(map[string]tfsdk.Attribute{
@@ -107,9 +83,7 @@ func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 	}, nil
 }
 
-// Create a new resource
 func (o *offloadResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	// Retrieve values from plan
 	var plan offloadResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -162,9 +136,7 @@ func (o *offloadResource) Create(ctx context.Context, req resource.CreateRequest
 	nsoff := &offloadingv1alpha1.NamespaceOffloading{ObjectMeta: metav1.ObjectMeta{
 		Name: consts.DefaultNamespaceOffloadingName, Namespace: plan.Namespace.ValueString()}}
 
-	//var oldStrategy offloadingv1alpha1.PodOffloadingStrategyType
 	_, err := controllerutil.CreateOrUpdate(ctx, o.kubeconfig.CRClient, nsoff, func() error {
-		//oldStrategy = nsoff.Spec.PodOffloadingStrategy
 		nsoff.Spec.PodOffloadingStrategy = offloadingv1alpha1.PodOffloadingStrategyType(plan.PodOffloadingStrategy.ValueString())
 		nsoff.Spec.NamespaceMappingStrategy = offloadingv1alpha1.NamespaceMappingStrategyType(plan.NamespaceMappingStrategy.ValueString())
 		nsoff.Spec.ClusterSelector = corev1.NodeSelector{NodeSelectorTerms: terms}
@@ -179,7 +151,6 @@ func (o *offloadResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -187,9 +158,7 @@ func (o *offloadResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 }
 
-// Read resource information
 func (o *offloadResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	// Get current state
 	var state offloadResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -197,7 +166,6 @@ func (o *offloadResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -205,7 +173,6 @@ func (o *offloadResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 }
 
-// Update updates the resource and sets the updated Terraform state on success.
 func (o *offloadResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	resp.Diagnostics.AddError(
 		"Unable to Update Resource",
@@ -213,11 +180,9 @@ func (o *offloadResource) Update(ctx context.Context, req resource.UpdateRequest
 	)
 }
 
-// Delete deletes the resource and removes the Terraform state on success.
 func (o *offloadResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 
 	var data offloadResourceModel
-	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 
 	nsoff := &offloadingv1alpha1.NamespaceOffloading{ObjectMeta: metav1.ObjectMeta{
@@ -232,7 +197,6 @@ func (o *offloadResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 }
 
-// Configure adds the provider configured client to the resource.
 func (o *offloadResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
@@ -251,7 +215,6 @@ type match_expressions struct {
 	MatchExpressions []match_expression `tfsdk:"match_expressions"`
 }
 
-// offloadResourceModel maps the resource schema data.
 type offloadResourceModel struct {
 	Namespace                types.String        `tfsdk:"namespace"`
 	PodOffloadingStrategy    types.String        `tfsdk:"pod_offloading_strategy"`

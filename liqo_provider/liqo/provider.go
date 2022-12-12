@@ -36,17 +36,14 @@ func init() {
 	utilruntime.Must(sharingv1alpha1.AddToScheme(scheme.Scheme))
 }
 
-// Ensure the implementation satisfies the expected interfaces
 var (
 	_ provider.Provider = &liqoProvider{}
 )
 
-// New is a helper function to simplify provider server and testing implementation.
 func New() provider.Provider {
 	return &liqoProvider{}
 }
 
-// liqoProvider is the provider implementation.
 type liqoProvider struct {
 }
 
@@ -55,12 +52,10 @@ type kubeconfig struct {
 	KubeClient *kubernetes.Clientset
 }
 
-// Metadata returns the provider type name.
 func (p *liqoProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = "liqo"
 }
 
-// GetSchema defines the provider-level schema for configuration data.
 func (p *liqoProvider) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		Attributes: map[string]tfsdk.Attribute{
@@ -188,7 +183,6 @@ func (p *liqoProvider) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnost
 									attribute_plan_modifier.DefaultValue(types.StringValue("")),
 								},
 								Validators: []tfsdk.AttributeValidator{
-									// These are example validators from terraform-plugin-framework-validators
 									stringvalidator.NoneOf("client.authentication.k8s.io/v1alpha1"),
 								},
 							},
@@ -221,7 +215,6 @@ func (p *liqoProvider) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnost
 	}, nil
 }
 
-// Configure prepares a HashiCups API client for data sources and resources.
 func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var config liqoProviderModel
 	diags := req.Config.Get(ctx, &config)
@@ -229,28 +222,6 @@ func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	/*
-		byte, err := ioutil.ReadFile(config.KUBERNETES.KUBE_CONFIG_PATH.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Unable to Create Resource",
-				err.Error(),
-			)
-			return
-		}
-
-		var clientCfg clientcmd.ClientConfig
-
-		clientCfg, err = clientcmd.NewClientConfigFromBytes(byte)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Unable to Create Resource",
-				err.Error(),
-			)
-			return
-		}
-	*/
 
 	overrides := &clientcmd.ConfigOverrides{}
 	loader := &clientcmd.ClientConfigLoadingRules{}
@@ -264,8 +235,6 @@ func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 			configPaths = append(configPaths, configPath.ValueString())
 		}
 	} else if v := os.Getenv("KUBE_CONFIG_PATHS"); v != "" {
-		// NOTE we have to do this here because the schema
-		// does not yet allow you to set a default for a TypeList
 		configPaths = filepath.SplitList(v)
 	}
 
@@ -308,7 +277,6 @@ func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		}
 	}
 
-	// Overriding with static configuration
 	if !config.KUBERNETES.KUBE_INSECURE.IsNull() {
 		overrides.ClusterInfo.InsecureSkipTLSVerify = !config.KUBERNETES.KUBE_INSECURE.ValueBool()
 	}
@@ -319,10 +287,6 @@ func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		overrides.AuthInfo.ClientCertificateData = bytes.NewBufferString(config.KUBERNETES.KUBE_CLIENT_CERT_DATA.ValueString()).Bytes()
 	}
 	if !config.KUBERNETES.KUBE_HOST.IsNull() {
-		// Server has to be the complete address of the kubernetes cluster (scheme://hostname:port), not just the hostname,
-		// because `overrides` are processed too late to be taken into account by `defaultServerUrlFor()`.
-		// This basically replicates what defaultServerUrlFor() does with config but for overrides,
-		// see https://github.com/kubernetes/client-go/blob/v12.0.0/rest/url_utils.go#L85-L87
 		hasCA := len(overrides.ClusterInfo.CertificateAuthorityData) != 0
 		hasCert := len(overrides.AuthInfo.ClientCertificateData) != 0
 		defaultTLS := hasCA || hasCert || overrides.ClusterInfo.InsecureSkipTLSVerify
@@ -419,12 +383,10 @@ func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 
 }
 
-// DataSources defines the data sources implemented in the provider.
 func (p *liqoProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return nil
 }
 
-// Resources defines the resources implemented in the provider.
 func (p *liqoProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewPeeringResource, NewGenerateResource, NewOffloadResource,
@@ -455,7 +417,6 @@ type kube_conf struct {
 	KUBE_EXEC                 []exec         `tfsdk:"exec"`
 }
 
-// liqoProviderModel maps provider schema data to a Go type.
 type liqoProviderModel struct {
 	KUBERNETES *kube_conf `tfsdk:"kubernetes"`
 }

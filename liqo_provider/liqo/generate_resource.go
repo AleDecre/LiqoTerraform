@@ -13,28 +13,23 @@ import (
 	foreigncluster "github.com/liqotech/liqo/pkg/utils/foreignCluster"
 )
 
-// Ensure the implementation satisfies the expected interfaces.
 var (
 	_ resource.Resource              = &generateResource{}
 	_ resource.ResourceWithConfigure = &generateResource{}
 )
 
-// NewGenerateResource is a helper function to simplify the provider implementation.
 func NewGenerateResource() resource.Resource {
 	return &generateResource{}
 }
 
-// generateResource is the resource implementation.
 type generateResource struct {
 	kubeconfig kubeconfig
 }
 
-// Metadata returns the resource type name.
 func (r *generateResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_generate"
 }
 
-// GetSchema defines the schema for the resource.
 func (r *generateResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
 		Attributes: map[string]tfsdk.Attribute{
@@ -66,9 +61,7 @@ func (r *generateResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diag
 	}, nil
 }
 
-// Create a new resource
 func (r *generateResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	// Retrieve values from plan
 	var plan generateResourceModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -112,7 +105,6 @@ func (r *generateResource) Create(ctx context.Context, req resource.CreateReques
 	plan.LocalToken = types.StringValue(localToken)
 	plan.AuthEP = types.StringValue(authEP)
 
-	// Set state to fully populated data
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -120,9 +112,7 @@ func (r *generateResource) Create(ctx context.Context, req resource.CreateReques
 	}
 }
 
-// Read resource information
 func (r *generateResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	// Get current state
 	var state generateResourceModel
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -130,7 +120,6 @@ func (r *generateResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	// Set refreshed state
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -138,7 +127,6 @@ func (r *generateResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 }
 
-// Update updates the resource and sets the updated Terraform state on success.
 func (r *generateResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	resp.Diagnostics.AddError(
 		"Unable to Update Resource",
@@ -146,11 +134,9 @@ func (r *generateResource) Update(ctx context.Context, req resource.UpdateReques
 	)
 }
 
-// Delete deletes the resource and removes the Terraform state on success.
 func (r *generateResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
-// Configure adds the provider configured client to the resource.
 func (r *generateResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
@@ -159,7 +145,6 @@ func (r *generateResource) Configure(_ context.Context, req resource.ConfigureRe
 	r.kubeconfig = req.ProviderData.(kubeconfig)
 }
 
-// generateResourceModel maps the resource schema data.
 type generateResourceModel struct {
 	ClusterID     types.String `tfsdk:"cluster_id"`
 	ClusterName   types.String `tfsdk:"cluster_name"`
