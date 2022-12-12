@@ -4,7 +4,6 @@ clusters = {
   peering = true,
   clusters_list = [
     {
-
       name = "rome"
       networking = {
         service_subnet = "10.90.0.0/12"
@@ -13,7 +12,6 @@ clusters = {
 
     },
     {
-
       name = "milan"
       networking = {
         service_subnet = "10.90.0.0/12"
