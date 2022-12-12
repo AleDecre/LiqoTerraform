@@ -11,7 +11,6 @@ resource "kind_cluster" "default" {
 
   name            = var.cluster.name
   node_image      = "kindest/node:${var.kind_version}"
-  //kubeconfig_path = "./config/liqo_kubeconf_${var.cluster.name}"
   wait_for_ready  = true
 
   kind_config {
@@ -30,7 +29,7 @@ resource "kind_cluster" "default" {
   }
 
   provisioner "local-exec" {
-    command = "./scripts/load_images.sh ${self.name}; liqoctl install kind --cluster-name ${var.cluster.name} --set telemetry.enable=false"
+    command = "liqoctl install kind --cluster-name ${var.cluster.name}"
     environment = {
       KUBECONFIG = "${kind_cluster.default.kubeconfig_path}"
     }
