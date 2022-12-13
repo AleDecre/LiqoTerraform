@@ -56,7 +56,7 @@ func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 				},
 				Computed: true,
 			},
-			"node_selector_terms": {
+			"cluster_selector_terms": {
 				Optional: true,
 				Attributes: tfsdk.ListNestedAttributes(map[string]tfsdk.Attribute{
 					"match_expressions": {
@@ -83,6 +83,9 @@ func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 	}, nil
 }
 
+// Creation of Offload Resource to offload a specific namespace,
+// additionally there is a possibility to select clusters with match_expressione
+// This resource will reproduce the same effect and outputs of "liqoctl offload" command
 func (o *offloadResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan offloadResourceModel
 	diags := req.Plan.Get(ctx, &plan)
@@ -93,7 +96,7 @@ func (o *offloadResource) Create(ctx context.Context, req resource.CreateRequest
 
 	var clusterSelector [][]metav1.LabelSelectorRequirement
 
-	for _, selector := range plan.NodeSelectorTerms {
+	for _, selector := range plan.ClusterSelectorTerms {
 		s := &metav1.LabelSelector{
 			MatchLabels:      map[string]string{},
 			MatchExpressions: []metav1.LabelSelectorRequirement{},
@@ -197,6 +200,7 @@ func (o *offloadResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 }
 
+// Configure method to obtain kubernetes Clients provided by provider
 func (o *offloadResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
@@ -219,5 +223,5 @@ type offloadResourceModel struct {
 	Namespace                types.String        `tfsdk:"namespace"`
 	PodOffloadingStrategy    types.String        `tfsdk:"pod_offloading_strategy"`
 	NamespaceMappingStrategy types.String        `tfsdk:"namespace_mapping_strategy"`
-	NodeSelectorTerms        []match_expressions `tfsdk:"node_selector_terms"`
+	ClusterSelectorTerms     []match_expressions `tfsdk:"cluster_selector_terms"`
 }

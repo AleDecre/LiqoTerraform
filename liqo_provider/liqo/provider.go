@@ -215,6 +215,8 @@ func (p *liqoProvider) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnost
 	}, nil
 }
 
+// Configure method to create the two kubernetes Clients using parameters passed in the provider instantiation in Terraform main
+// After the creation both Clients will be available in resources and data sources
 func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var config liqoProviderModel
 	diags := req.Config.Get(ctx, &config)
@@ -399,6 +401,7 @@ type exec struct {
 	ENV         types.Map      `tfsdk:"env"`
 	ARGS        []types.String `tfsdk:"args"`
 }
+
 type kube_conf struct {
 	KUBE_HOST                 types.String   `tfsdk:"host"`
 	KUBE_USER                 types.String   `tfsdk:"username"`

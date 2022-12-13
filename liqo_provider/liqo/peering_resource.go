@@ -69,6 +69,8 @@ func (p *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 	}, nil
 }
 
+// Creation of Peering Resource to execute peerign between two clusters using auth parameters provided by Generate Resource
+// This resource will reproduce the same effect and outputs of "liqoctl peer out-of-band" command
 func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan peeringResourceModel
 	diags := req.Plan.Get(ctx, &plan)
@@ -211,6 +213,7 @@ func (p *peeringResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 }
 
+// Configure method to obtain kubernetes Clients provided by provider
 func (p *peeringResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return

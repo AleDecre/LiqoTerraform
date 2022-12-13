@@ -61,6 +61,8 @@ func (r *generateResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diag
 	}, nil
 }
 
+// Creation of Generate Resource to obtain necessary pairing parameters used by Peering Resources
+// This resource will reproduce the same effect and outputs of "liqoctl generate peer-command" command
 func (r *generateResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan generateResourceModel
 	diags := req.Plan.Get(ctx, &plan)
@@ -137,6 +139,7 @@ func (r *generateResource) Update(ctx context.Context, req resource.UpdateReques
 func (r *generateResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 }
 
+// Configure method to obtain kubernetes Clients provided by provider
 func (r *generateResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return

@@ -80,7 +80,7 @@ resource "liqo_offload" "offload" {
 
 
 
-  node_selector_terms = [
+  cluster_selector_terms = [
     {
       match_expressions = [
         {
