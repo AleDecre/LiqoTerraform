@@ -58,6 +58,7 @@ func (p *liqoProvider) Metadata(_ context.Context, _ provider.MetadataRequest, r
 
 func (p *liqoProvider) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
+		Description: "Interact with Liqo.",
 		Attributes: map[string]tfsdk.Attribute{
 			"kubernetes": {
 				Optional: true,
@@ -260,20 +261,20 @@ func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 			loader.Precedence = expandedPaths
 		}
 
-		ctxOk := config.KUBERNETES.KUBE_CTX.IsNull()
-		authInfoOk := config.KUBERNETES.KUBE_CTX_AUTH_INFO.IsNull()
-		clusterOk := config.KUBERNETES.KUBE_CTX_CLUSTER.IsNull()
+		ctxNotOk := config.KUBERNETES.KUBE_CTX.IsNull()
+		authInfoNotOk := config.KUBERNETES.KUBE_CTX_AUTH_INFO.IsNull()
+		clusterNotOk := config.KUBERNETES.KUBE_CTX_CLUSTER.IsNull()
 
-		if ctxOk || authInfoOk || clusterOk {
-			if ctxOk {
+		if ctxNotOk || authInfoNotOk || clusterNotOk {
+			if ctxNotOk {
 				overrides.CurrentContext = config.KUBERNETES.KUBE_CTX.ValueString()
 			}
 
 			overrides.Context = clientcmdapi.Context{}
-			if authInfoOk {
+			if authInfoNotOk {
 				overrides.Context.AuthInfo = config.KUBERNETES.KUBE_CTX_AUTH_INFO.ValueString()
 			}
-			if clusterOk {
+			if clusterNotOk {
 				overrides.Context.Cluster = config.KUBERNETES.KUBE_CTX_CLUSTER.ValueString()
 			}
 		}
@@ -335,8 +336,6 @@ func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 
 		overrides.AuthInfo.Exec = exec
 	}
-
-	overrides.Context.Namespace = "default"
 
 	clientCfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loader, overrides)
 	if clientCfg == nil {

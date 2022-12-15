@@ -40,22 +40,27 @@ func (p *peeringResource) Metadata(_ context.Context, req resource.MetadataReque
 
 func (p *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
+		Description: "Execute peering.",
 		Attributes: map[string]tfsdk.Attribute{
 			"cluster_id": {
-				Type:     types.StringType,
-				Required: true,
+				Type:        types.StringType,
+				Required:    true,
+				Description: "Provider cluster ID used for peering.",
 			},
 			"cluster_name": {
-				Type:     types.StringType,
-				Required: true,
+				Type:        types.StringType,
+				Required:    true,
+				Description: "Provider cluster name used for peering.",
 			},
 			"cluster_authurl": {
-				Type:     types.StringType,
-				Required: true,
+				Type:        types.StringType,
+				Required:    true,
+				Description: "Provider authentication url used for peering.",
 			},
 			"cluster_token": {
-				Type:     types.StringType,
-				Required: true,
+				Type:        types.StringType,
+				Required:    true,
+				Description: "Provider authentication token used for peering.",
 			},
 			"liqo_namespace": {
 				Type:     types.StringType,
@@ -63,13 +68,14 @@ func (p *peeringResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 				PlanModifiers: []tfsdk.AttributePlanModifier{
 					attribute_plan_modifier.DefaultValue(types.StringValue("liqo")),
 				},
-				Computed: true,
+				Computed:    true,
+				Description: "Namespace where is Liqo installed in provider cluster.",
 			},
 		},
 	}, nil
 }
 
-// Creation of Peering Resource to execute peerign between two clusters using auth parameters provided by Generate Resource
+// Creation of Peering Resource to execute peering between two clusters using auth parameters provided by Generate Resource
 // This resource will reproduce the same effect and outputs of "liqoctl peer out-of-band" command
 func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan peeringResourceModel
@@ -91,7 +97,7 @@ func (p *peeringResource) Create(ctx context.Context, req resource.CreateRequest
 	if clusterIdentity.ClusterID == plan.ClusterID.ValueString() {
 		resp.Diagnostics.AddError(
 			"Unable to Create Resource",
-			"Same ClusterID",
+			"The Cluster ID of the remote cluster is the same of that of the local cluster",
 		)
 		return
 	}
@@ -187,18 +193,10 @@ func (p *peeringResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 	var foreignCluster discoveryv1alpha1.ForeignCluster
 	if err := p.kubeconfig.CRClient.Get(ctx, kubeTypes.NamespacedName{Name: data.ClusterName.ValueString()}, &foreignCluster); err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Delete Resource",
-			err.Error(),
-		)
 		return
 	}
 
 	if foreignCluster.Spec.PeeringType != discoveryv1alpha1.PeeringTypeOutOfBand {
-		resp.Diagnostics.AddError(
-			"Unable to Delete Resource",
-			"The peering type towards remote cluster "+data.ClusterName.ValueString()+" is not OOB",
-		)
 		return
 	}
 

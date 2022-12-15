@@ -32,22 +32,27 @@ func (r *generateResource) Metadata(_ context.Context, req resource.MetadataRequ
 
 func (r *generateResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
+		Description: "Generate peering parameters for remote clusters",
 		Attributes: map[string]tfsdk.Attribute{
 			"cluster_id": {
-				Type:     types.StringType,
-				Computed: true,
+				Type:        types.StringType,
+				Computed:    true,
+				Description: "Provider cluster ID.",
 			},
 			"cluster_name": {
-				Type:     types.StringType,
-				Computed: true,
+				Type:        types.StringType,
+				Computed:    true,
+				Description: "Provider cluster name.",
 			},
 			"auth_ep": {
-				Type:     types.StringType,
-				Computed: true,
+				Type:        types.StringType,
+				Computed:    true,
+				Description: "Provider authentication endpoint.",
 			},
 			"local_token": {
-				Type:     types.StringType,
-				Computed: true,
+				Type:        types.StringType,
+				Computed:    true,
+				Description: "Provider authentication token.",
 			},
 			"liqo_namespace": {
 				Type:     types.StringType,
@@ -55,7 +60,8 @@ func (r *generateResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diag
 				PlanModifiers: []tfsdk.AttributePlanModifier{
 					attribute_plan_modifier.DefaultValue(types.StringValue("liqo")),
 				},
-				Computed: true,
+				Computed:    true,
+				Description: "Namespace where is Liqo installed in provider cluster.",
 			},
 		},
 	}, nil

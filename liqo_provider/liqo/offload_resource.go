@@ -35,10 +35,12 @@ func (o *offloadResource) Metadata(_ context.Context, req resource.MetadataReque
 
 func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagnostics) {
 	return tfsdk.Schema{
+		Description: "Offload a namespace.",
 		Attributes: map[string]tfsdk.Attribute{
 			"namespace": {
-				Type:     types.StringType,
-				Required: true,
+				Type:        types.StringType,
+				Required:    true,
+				Description: "Offload a namespace.",
 			},
 			"pod_offloading_strategy": {
 				Type:     types.StringType,
@@ -46,7 +48,8 @@ func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 				PlanModifiers: []tfsdk.AttributePlanModifier{
 					attribute_plan_modifier.DefaultValue(types.StringValue("LocalAndRemote")),
 				},
-				Computed: true,
+				Computed:    true,
+				Description: "Namespace to offload.",
 			},
 			"namespace_mapping_strategy": {
 				Type:     types.StringType,
@@ -54,7 +57,8 @@ func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 				PlanModifiers: []tfsdk.AttributePlanModifier{
 					attribute_plan_modifier.DefaultValue(types.StringValue("DefaultName")),
 				},
-				Computed: true,
+				Computed:    true,
+				Description: "Naming strategy used to create the remote namespace.",
 			},
 			"cluster_selector_terms": {
 				Optional: true,
@@ -64,20 +68,25 @@ func (o *offloadResource) GetSchema(_ context.Context) (tfsdk.Schema, diag.Diagn
 						Computed: true,
 						Attributes: tfsdk.ListNestedAttributes(map[string]tfsdk.Attribute{
 							"key": {
-								Type:     types.StringType,
-								Required: true,
+								Type:        types.StringType,
+								Required:    true,
+								Description: " The label key that the selector applies to.",
 							},
 							"operator": {
-								Type:     types.StringType,
-								Required: true,
+								Type:        types.StringType,
+								Required:    true,
+								Description: "Represents a key's relationship to a set of values.",
 							},
 							"values": {
-								Type:     types.ListType{ElemType: types.StringType},
-								Optional: true,
+								Type:        types.ListType{ElemType: types.StringType},
+								Optional:    true,
+								Description: "An array of string values.",
 							},
 						}),
+						Description: "A list of cluster selector.",
 					},
 				}),
+				Description: "Selectors to restrict the set of remote clusters.",
 			},
 		},
 	}, nil
