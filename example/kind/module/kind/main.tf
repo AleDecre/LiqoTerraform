@@ -28,11 +28,4 @@ resource "kind_cluster" "default" {
     }
   }
 
-  provisioner "local-exec" {
-    command = "liqoctl install kind --cluster-name ${var.cluster.name}"
-    environment = {
-      KUBECONFIG = "${kind_cluster.default.kubeconfig_path}"
-    }
-  }
-
 }
