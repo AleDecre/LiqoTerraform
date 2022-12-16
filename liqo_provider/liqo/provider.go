@@ -1,10 +1,7 @@
 package liqo
 
 import (
-	"bytes"
 	"context"
-	"os"
-	"path/filepath"
 	"terraform-provider-test/liqo/attribute_plan_modifier"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -18,15 +15,8 @@ import (
 	netv1alpha1 "github.com/liqotech/liqo/apis/net/v1alpha1"
 	offloadingv1alpha1 "github.com/liqotech/liqo/apis/offloading/v1alpha1"
 	sharingv1alpha1 "github.com/liqotech/liqo/apis/sharing/v1alpha1"
-	"github.com/mitchellh/go-homedir"
-	apimachineryschema "k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/kubectl/pkg/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func init() {
@@ -45,11 +35,6 @@ func New() provider.Provider {
 }
 
 type liqoProvider struct {
-}
-
-type kubeconfig struct {
-	CRClient   client.Client
-	KubeClient *kubernetes.Clientset
 }
 
 func (p *liqoProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -226,162 +211,7 @@ func (p *liqoProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		return
 	}
 
-	overrides := &clientcmd.ConfigOverrides{}
-	loader := &clientcmd.ClientConfigLoadingRules{}
-
-	configPaths := []string{}
-
-	if !config.KUBERNETES.KUBE_CONFIG_PATH.IsNull() {
-		configPaths = []string{config.KUBERNETES.KUBE_CONFIG_PATH.ValueString()}
-	} else if len(config.KUBERNETES.KUBE_CONFIG_PATHS) > 0 {
-		for _, configPath := range config.KUBERNETES.KUBE_CONFIG_PATHS {
-			configPaths = append(configPaths, configPath.ValueString())
-		}
-	} else if v := os.Getenv("KUBE_CONFIG_PATHS"); v != "" {
-		configPaths = filepath.SplitList(v)
-	}
-
-	if len(configPaths) > 0 {
-		expandedPaths := []string{}
-		for _, p := range configPaths {
-			path, err := homedir.Expand(p)
-			if err != nil {
-				resp.Diagnostics.AddError(
-					"Unable to Create Resource",
-					err.Error(),
-				)
-				return
-			}
-			expandedPaths = append(expandedPaths, path)
-		}
-
-		if len(expandedPaths) == 1 {
-			loader.ExplicitPath = expandedPaths[0]
-		} else {
-			loader.Precedence = expandedPaths
-		}
-
-		ctxNotOk := config.KUBERNETES.KUBE_CTX.IsNull()
-		authInfoNotOk := config.KUBERNETES.KUBE_CTX_AUTH_INFO.IsNull()
-		clusterNotOk := config.KUBERNETES.KUBE_CTX_CLUSTER.IsNull()
-
-		if ctxNotOk || authInfoNotOk || clusterNotOk {
-			if ctxNotOk {
-				overrides.CurrentContext = config.KUBERNETES.KUBE_CTX.ValueString()
-			}
-
-			overrides.Context = clientcmdapi.Context{}
-			if authInfoNotOk {
-				overrides.Context.AuthInfo = config.KUBERNETES.KUBE_CTX_AUTH_INFO.ValueString()
-			}
-			if clusterNotOk {
-				overrides.Context.Cluster = config.KUBERNETES.KUBE_CTX_CLUSTER.ValueString()
-			}
-		}
-	}
-
-	if !config.KUBERNETES.KUBE_INSECURE.IsNull() {
-		overrides.ClusterInfo.InsecureSkipTLSVerify = !config.KUBERNETES.KUBE_INSECURE.ValueBool()
-	}
-	if !config.KUBERNETES.KUBE_CLUSTER_CA_CERT_DATA.IsNull() {
-		overrides.ClusterInfo.CertificateAuthorityData = bytes.NewBufferString(config.KUBERNETES.KUBE_CLUSTER_CA_CERT_DATA.ValueString()).Bytes()
-	}
-	if !config.KUBERNETES.KUBE_CLIENT_CERT_DATA.IsNull() {
-		overrides.AuthInfo.ClientCertificateData = bytes.NewBufferString(config.KUBERNETES.KUBE_CLIENT_CERT_DATA.ValueString()).Bytes()
-	}
-	if !config.KUBERNETES.KUBE_HOST.IsNull() {
-		hasCA := len(overrides.ClusterInfo.CertificateAuthorityData) != 0
-		hasCert := len(overrides.AuthInfo.ClientCertificateData) != 0
-		defaultTLS := hasCA || hasCert || overrides.ClusterInfo.InsecureSkipTLSVerify
-		host, _, err := rest.DefaultServerURL(config.KUBERNETES.KUBE_HOST.ValueString(), "", apimachineryschema.GroupVersion{}, defaultTLS)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Unable to Create Resource",
-				err.Error(),
-			)
-			return
-		}
-
-		overrides.ClusterInfo.Server = host.String()
-	}
-	if !config.KUBERNETES.KUBE_USER.IsNull() {
-		overrides.AuthInfo.Username = config.KUBERNETES.KUBE_USER.ValueString()
-	}
-	if !config.KUBERNETES.KUBE_PASSWORD.IsNull() {
-		overrides.AuthInfo.Password = config.KUBERNETES.KUBE_PASSWORD.ValueString()
-	}
-	if !config.KUBERNETES.KUBE_CLIENT_KEY_DATA.IsNull() {
-		overrides.AuthInfo.ClientKeyData = bytes.NewBufferString(config.KUBERNETES.KUBE_CLIENT_KEY_DATA.ValueString()).Bytes()
-	}
-	if !config.KUBERNETES.KUBE_TOKEN.IsNull() {
-		overrides.AuthInfo.Token = config.KUBERNETES.KUBE_TOKEN.ValueString()
-	}
-
-	if !config.KUBERNETES.KUBE_PROXY_URL.IsNull() {
-		overrides.ClusterDefaults.ProxyURL = config.KUBERNETES.KUBE_PROXY_URL.ValueString()
-	}
-
-	if len(config.KUBERNETES.KUBE_EXEC) > 0 {
-		exec := &clientcmdapi.ExecConfig{}
-		exec.InteractiveMode = clientcmdapi.IfAvailableExecInteractiveMode
-		exec.APIVersion = config.KUBERNETES.KUBE_EXEC[0].API_VERSION.ValueString()
-		exec.Command = config.KUBERNETES.KUBE_EXEC[0].COMMAND.ValueString()
-		for _, arg := range config.KUBERNETES.KUBE_EXEC[0].ARGS {
-			exec.Args = append(exec.Args, arg.ValueString())
-		}
-
-		for kk, vv := range config.KUBERNETES.KUBE_EXEC[0].ENV.Elements() {
-			exec.Env = append(exec.Env, clientcmdapi.ExecEnvVar{Name: kk, Value: vv.String()})
-		}
-
-		overrides.AuthInfo.Exec = exec
-	}
-
-	clientCfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loader, overrides)
-	if clientCfg == nil {
-		resp.Diagnostics.AddError(
-			"Unable to Create Resource",
-			"Unable to Create Resource while creating clientCfg",
-		)
-		return
-	}
-
-	var restCfg *rest.Config
-
-	restCfg, err := clientCfg.ClientConfig()
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Create Resource",
-			err.Error(),
-		)
-		return
-	}
-
-	var CRClient client.Client
-
-	CRClient, err = client.New(restCfg, client.Options{Scheme: scheme.Scheme})
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Create Resource",
-			err.Error(),
-		)
-		return
-	}
-
-	KubeClient, err := kubernetes.NewForConfig(restCfg)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Create Resource",
-			err.Error(),
-		)
-		return
-	}
-
-	resp.ResourceData = kubeconfig{
-		CRClient:   CRClient,
-		KubeClient: KubeClient,
-	}
-
+	resp.ResourceData = config
 }
 
 func (p *liqoProvider) DataSources(_ context.Context) []func() datasource.DataSource {

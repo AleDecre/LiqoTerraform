@@ -1,7 +1,10 @@
 package liqo
 
 import (
+	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"terraform-provider-test/liqo/attribute_plan_modifier"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -11,6 +14,14 @@ import (
 	"github.com/liqotech/liqo/pkg/auth"
 	"github.com/liqotech/liqo/pkg/utils"
 	foreigncluster "github.com/liqotech/liqo/pkg/utils/foreignCluster"
+	"github.com/mitchellh/go-homedir"
+	apimachineryschema "k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/kubectl/pkg/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
@@ -23,7 +34,9 @@ func NewGenerateResource() resource.Resource {
 }
 
 type generateResource struct {
-	kubeconfig kubeconfig
+	config     liqoProviderModel
+	CRClient   client.Client
+	KubeClient *kubernetes.Clientset
 }
 
 func (r *generateResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -77,7 +90,129 @@ func (r *generateResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.ValueString())
+	overrides := &clientcmd.ConfigOverrides{}
+	loader := &clientcmd.ClientConfigLoadingRules{}
+
+	configPaths := []string{}
+
+	if !r.config.KUBERNETES.KUBE_CONFIG_PATH.IsNull() {
+		configPaths = []string{r.config.KUBERNETES.KUBE_CONFIG_PATH.ValueString()}
+	} else if len(r.config.KUBERNETES.KUBE_CONFIG_PATHS) > 0 {
+		for _, configPath := range r.config.KUBERNETES.KUBE_CONFIG_PATHS {
+			configPaths = append(configPaths, configPath.ValueString())
+		}
+	} else if v := os.Getenv("KUBE_CONFIG_PATHS"); v != "" {
+		configPaths = filepath.SplitList(v)
+	}
+
+	if len(configPaths) > 0 {
+		expandedPaths := []string{}
+		for _, p := range configPaths {
+			path, err := homedir.Expand(p)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Unable to Create Resource",
+					err.Error(),
+				)
+				return
+			}
+			expandedPaths = append(expandedPaths, path)
+		}
+
+		if len(expandedPaths) == 1 {
+			loader.ExplicitPath = expandedPaths[0]
+		} else {
+			loader.Precedence = expandedPaths
+		}
+
+		ctxNotOk := r.config.KUBERNETES.KUBE_CTX.IsNull()
+		authInfoNotOk := r.config.KUBERNETES.KUBE_CTX_AUTH_INFO.IsNull()
+		clusterNotOk := r.config.KUBERNETES.KUBE_CTX_CLUSTER.IsNull()
+
+		if ctxNotOk || authInfoNotOk || clusterNotOk {
+			if ctxNotOk {
+				overrides.CurrentContext = r.config.KUBERNETES.KUBE_CTX.ValueString()
+			}
+
+			overrides.Context = clientcmdapi.Context{}
+			if authInfoNotOk {
+				overrides.Context.AuthInfo = r.config.KUBERNETES.KUBE_CTX_AUTH_INFO.ValueString()
+			}
+			if clusterNotOk {
+				overrides.Context.Cluster = r.config.KUBERNETES.KUBE_CTX_CLUSTER.ValueString()
+			}
+		}
+	}
+
+	if !r.config.KUBERNETES.KUBE_INSECURE.IsNull() {
+		overrides.ClusterInfo.InsecureSkipTLSVerify = !r.config.KUBERNETES.KUBE_INSECURE.ValueBool()
+	}
+	if !r.config.KUBERNETES.KUBE_CLUSTER_CA_CERT_DATA.IsNull() {
+		overrides.ClusterInfo.CertificateAuthorityData = bytes.NewBufferString(r.config.KUBERNETES.KUBE_CLUSTER_CA_CERT_DATA.ValueString()).Bytes()
+	}
+	if !r.config.KUBERNETES.KUBE_CLIENT_CERT_DATA.IsNull() {
+		overrides.AuthInfo.ClientCertificateData = bytes.NewBufferString(r.config.KUBERNETES.KUBE_CLIENT_CERT_DATA.ValueString()).Bytes()
+	}
+	if !r.config.KUBERNETES.KUBE_HOST.IsNull() {
+		hasCA := len(overrides.ClusterInfo.CertificateAuthorityData) != 0
+		hasCert := len(overrides.AuthInfo.ClientCertificateData) != 0
+		defaultTLS := hasCA || hasCert || overrides.ClusterInfo.InsecureSkipTLSVerify
+		host, _, err := rest.DefaultServerURL(r.config.KUBERNETES.KUBE_HOST.ValueString(), "", apimachineryschema.GroupVersion{}, defaultTLS)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Unable to Create Resource",
+				err.Error(),
+			)
+			return
+		}
+
+		overrides.ClusterInfo.Server = host.String()
+	}
+	if !r.config.KUBERNETES.KUBE_USER.IsNull() {
+		overrides.AuthInfo.Username = r.config.KUBERNETES.KUBE_USER.ValueString()
+	}
+	if !r.config.KUBERNETES.KUBE_PASSWORD.IsNull() {
+		overrides.AuthInfo.Password = r.config.KUBERNETES.KUBE_PASSWORD.ValueString()
+	}
+	if !r.config.KUBERNETES.KUBE_CLIENT_KEY_DATA.IsNull() {
+		overrides.AuthInfo.ClientKeyData = bytes.NewBufferString(r.config.KUBERNETES.KUBE_CLIENT_KEY_DATA.ValueString()).Bytes()
+	}
+	if !r.config.KUBERNETES.KUBE_TOKEN.IsNull() {
+		overrides.AuthInfo.Token = r.config.KUBERNETES.KUBE_TOKEN.ValueString()
+	}
+
+	if !r.config.KUBERNETES.KUBE_PROXY_URL.IsNull() {
+		overrides.ClusterDefaults.ProxyURL = r.config.KUBERNETES.KUBE_PROXY_URL.ValueString()
+	}
+
+	if len(r.config.KUBERNETES.KUBE_EXEC) > 0 {
+		exec := &clientcmdapi.ExecConfig{}
+		exec.InteractiveMode = clientcmdapi.IfAvailableExecInteractiveMode
+		exec.APIVersion = r.config.KUBERNETES.KUBE_EXEC[0].API_VERSION.ValueString()
+		exec.Command = r.config.KUBERNETES.KUBE_EXEC[0].COMMAND.ValueString()
+		for _, arg := range r.config.KUBERNETES.KUBE_EXEC[0].ARGS {
+			exec.Args = append(exec.Args, arg.ValueString())
+		}
+
+		for kk, vv := range r.config.KUBERNETES.KUBE_EXEC[0].ENV.Elements() {
+			exec.Env = append(exec.Env, clientcmdapi.ExecEnvVar{Name: kk, Value: vv.String()})
+		}
+
+		overrides.AuthInfo.Exec = exec
+	}
+
+	clientCfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loader, overrides)
+	if clientCfg == nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			"Unable to Create Resource while creating clientCfg",
+		)
+		return
+	}
+
+	var restCfg *rest.Config
+
+	restCfg, err := clientCfg.ClientConfig()
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create Resource",
@@ -86,7 +221,9 @@ func (r *generateResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	localToken, err := auth.GetToken(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.ValueString())
+	var CRClient client.Client
+
+	CRClient, err = client.New(restCfg, client.Options{Scheme: scheme.Scheme})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create Resource",
@@ -95,7 +232,37 @@ func (r *generateResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	authEP, err := foreigncluster.GetHomeAuthURL(ctx, r.kubeconfig.CRClient, plan.LiqoNamespace.ValueString())
+	KubeClient, err := kubernetes.NewForConfig(restCfg)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
+	}
+
+	r.CRClient = CRClient
+	r.KubeClient = KubeClient
+
+	clusterIdentity, err := utils.GetClusterIdentityWithControllerClient(ctx, r.CRClient, plan.LiqoNamespace.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
+	}
+
+	localToken, err := auth.GetToken(ctx, r.CRClient, plan.LiqoNamespace.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create Resource",
+			err.Error(),
+		)
+		return
+	}
+
+	authEP, err := foreigncluster.GetHomeAuthURL(ctx, r.CRClient, plan.LiqoNamespace.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create Resource",
@@ -146,12 +313,13 @@ func (r *generateResource) Delete(ctx context.Context, req resource.DeleteReques
 }
 
 // Configure method to obtain kubernetes Clients provided by provider
-func (r *generateResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
+func (r *generateResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
 
-	r.kubeconfig = req.ProviderData.(kubeconfig)
+	r.config = req.ProviderData.(liqoProviderModel)
+
 }
 
 type generateResourceModel struct {
