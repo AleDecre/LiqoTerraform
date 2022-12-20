@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/helm"
       version = "2.7.1"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "2.16.1"
+    }
     liqo = {
       source = "liqo-provider/liqo/test"
     }
@@ -28,6 +32,9 @@ provider "helm" {
     config_path = kind_cluster.milan.kubeconfig_path
   }
 
+}
+provider "kubernetes" {
+  config_path = kind_cluster.rome.kubeconfig_path
 }
 provider "liqo" {
   alias = "rome"
@@ -173,8 +180,6 @@ resource "helm_release" "install_liqo_milan" {
   }
 
 }
-
-
 resource "liqo_generate" "generate" {
 
   depends_on = [
@@ -198,46 +203,136 @@ resource "liqo_peering" "peering" {
   cluster_token   = liqo_generate.generate.local_token
 
 }
-resource "time_sleep" "wait_10_seconds" {
-  depends_on = [liqo_peering.peering]
-
-  create_duration = "10s"
-}
-resource "null_resource" "create_namespace" {
+resource "kubernetes_namespace" "namespace" {
 
   depends_on = [
-    time_sleep.wait_10_seconds
+    kind_cluster.rome
   ]
-
-  provisioner "local-exec" {
-    command = "kubectl create namespace liqo-demo && kubectl label nodes liqo-milan disktype=ssd"
-    environment = {
-      KUBECONFIG = kind_cluster.rome.kubeconfig_path
-    }
+  metadata {
+    name = "liqo-demo"
   }
 
 }
 resource "liqo_offload" "offload" {
 
   depends_on = [
-    null_resource.create_namespace,
-    liqo_peering.peering
+    helm_release.install_liqo_rome,
+    kubernetes_namespace.namespace
   ]
 
   provider = liqo.rome
 
-  cluster_selector_terms = [
-    {
-      match_expressions = [
-        {
-          key      = "disktype"
-          operator = "In"
-          values   = ["ssd", "hdd"]
-        },
-      ]
-    }
-  ]
-
   namespace = "liqo-demo"
 
+}
+
+
+resource "kubernetes_pod" "pod_nginx_local" {
+
+  depends_on = [
+    liqo_peering.peering,
+    liqo_offload.offload
+  ]
+  metadata {
+    labels = {
+      app = "liqo-demo"
+    }
+    name      = "nginx-local"
+    namespace = "liqo-demo"
+  }
+
+  spec {
+    affinity {
+      node_affinity {
+        required_during_scheduling_ignored_during_execution {
+          node_selector_term {
+            match_expressions {
+              key      = "liqo.io/type"
+              operator = "NotIn"
+              values = [
+                "virtual-node",
+              ]
+            }
+          }
+        }
+      }
+    }
+    container {
+      name              = "nginx"
+      image             = "nginxdemos/hello"
+      image_pull_policy = "IfNotPresent"
+      port {
+        container_port = 80
+        name           = "web"
+      }
+    }
+  }
+}
+resource "kubernetes_pod" "pod_nginx_remote" {
+
+  depends_on = [
+    liqo_peering.peering,
+    liqo_offload.offload
+  ]
+
+  metadata {
+    labels = {
+      app = "liqo-demo"
+    }
+    name      = "nginx-remote"
+    namespace = "liqo-demo"
+  }
+
+  spec {
+    affinity {
+      node_affinity {
+        required_during_scheduling_ignored_during_execution {
+          node_selector_term {
+            match_expressions {
+              key      = "liqo.io/type"
+              operator = "In"
+              values = [
+                "virtual-node",
+              ]
+            }
+          }
+        }
+      }
+    }
+    container {
+      name              = "nginx"
+      image             = "nginxdemos/hello"
+      image_pull_policy = "IfNotPresent"
+      port {
+        container_port = 80
+        name           = "web"
+      }
+    }
+  }
+}
+resource "kubernetes_service" "service_liqo_demo" {
+
+  depends_on = [
+    liqo_peering.peering,
+    liqo_offload.offload
+  ]
+
+  metadata {
+    name      = "liqo-demo"
+    namespace = "liqo-demo"
+  }
+
+  spec {
+    port {
+      name       = "web"
+      port       = 80
+      protocol   = "TCP"
+      target_port = "web"
+    }
+    selector = {
+      app = "liqo-demo"
+    }
+    type = "ClusterIP"
+
+  }
 }
