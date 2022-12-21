@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"terraform-provider-test/liqo/attribute_plan_modifier"
+	"terraform-provider-liqo/liqo/attribute_plan_modifier"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"

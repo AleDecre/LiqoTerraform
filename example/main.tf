@@ -13,7 +13,7 @@ terraform {
       version = "2.16.1"
     }
     liqo = {
-      source = "liqo-provider/liqo/test"
+      source = "liqo-provider/liqo/liqo"
     }
   }
 }

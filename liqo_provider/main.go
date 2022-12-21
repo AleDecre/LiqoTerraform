@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"terraform-provider-test/liqo"
+	"terraform-provider-liqo/liqo"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
@@ -13,6 +13,6 @@ import (
 
 func main() {
 	providerserver.Serve(context.Background(), liqo.New, providerserver.ServeOpts{
-		Address: "liqo-provider/liqo/test",
+		Address: "liqo-provider/liqo/liqo",
 	})
 }

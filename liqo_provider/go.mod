@@ -1,4 +1,4 @@
-module terraform-provider-test
+module terraform-provider-liqo
 
 go 1.19
 

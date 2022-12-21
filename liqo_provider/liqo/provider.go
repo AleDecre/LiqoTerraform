@@ -2,7 +2,7 @@ package liqo
 
 import (
 	"context"
-	"terraform-provider-test/liqo/attribute_plan_modifier"
+	"terraform-provider-liqo/liqo/attribute_plan_modifier"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
